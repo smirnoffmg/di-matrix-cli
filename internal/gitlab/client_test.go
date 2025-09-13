@@ -5,6 +5,7 @@ import (
 	"di-matrix-cli/internal/domain"
 	"di-matrix-cli/internal/gitlab"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -243,6 +244,63 @@ func TestGitlabClient_GetFileContent(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, content)
 		assert.Contains(t, err.Error(), "failed to get project")
+	})
+}
+
+func TestGitlabClient_GetRepository(t *testing.T) {
+	t.Parallel()
+
+	// Skip if no GitLab token is provided
+	token := os.Getenv("GITLAB_TOKEN")
+	if token == "" {
+		t.Skip("GITLAB_TOKEN not set, skipping integration test")
+	}
+
+	baseURL := os.Getenv("GITLAB_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://gitlab.com/"
+	}
+
+	client, err := gitlab.NewClient(baseURL, token, zap.NewNop())
+	require.NoError(t, err)
+
+	t.Run("get repository by URL", func(t *testing.T) {
+		t.Parallel()
+		// Use a well-known public project
+		repoURL := "https://gitlab.com/gitlab-org/gitlab-runner"
+
+		repo, err := client.GetRepository(context.Background(), repoURL)
+
+		require.NoError(t, err)
+		assert.NotNil(t, repo)
+		assert.Equal(t, "gitlab-runner", repo.Name)
+		assert.Contains(t, repo.URL, "gitlab-runner")
+		assert.Positive(t, repo.ID)
+	})
+
+	t.Run("invalid repository URL should fail", func(t *testing.T) {
+		t.Parallel()
+		repoURL := "https://gitlab.com/nonexistent/project"
+
+		repo, err := client.GetRepository(context.Background(), repoURL)
+
+		require.Error(t, err)
+		assert.Nil(t, repo)
+		assert.Contains(t, err.Error(), "failed to get project")
+	})
+
+	t.Run("malformed URL should fail", func(t *testing.T) {
+		t.Parallel()
+		repoURL := "not-a-valid-url"
+
+		repo, err := client.GetRepository(context.Background(), repoURL)
+
+		require.Error(t, err)
+		assert.Nil(t, repo)
+		// The error could be either from path extraction or from the API call
+		assert.True(t,
+			strings.Contains(err.Error(), "failed to extract project path") ||
+				strings.Contains(err.Error(), "failed to get project"))
 	})
 }
 

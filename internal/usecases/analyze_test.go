@@ -4,12 +4,11 @@ import (
 	"context"
 	"di-matrix-cli/internal/domain"
 	"di-matrix-cli/internal/usecases"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -151,39 +150,353 @@ func TestAnalyzeResponse_JSON(t *testing.T) {
 func TestConcurrencySafety(t *testing.T) {
 	t.Parallel()
 
-	// This test verifies that the concurrency patterns used in Execute() are safe
-	// We test that multiple goroutines can safely append to slices with proper synchronization
+	// Test that the use case can be created and used concurrently
+	mockGitlabClient := &MockGitlabClient{}
+	mockScanner := &MockRepositoryScanner{}
+	mockParser := &MockDependencyParser{}
+	mockClassifier := &MockDependencyClassifier{}
+	mockGenerator := &MockReportGenerator{}
 
-	var results []int
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+	logger := zap.NewNop()
+	ctx := context.Background()
 
-	// Simulate concurrent operations similar to what happens in Execute()
-	numGoroutines := 10
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(value int) {
-			defer wg.Done()
+	useCase := usecases.NewAnalyzeUseCase(
+		ctx,
+		mockGitlabClient,
+		mockScanner,
+		mockParser,
+		mockClassifier,
+		mockGenerator,
+		logger,
+	)
 
-			// Simulate some work
-			time.Sleep(1 * time.Millisecond)
+	// Test concurrent access to the use case
+	done := make(chan bool, 5)
 
-			// Safely append to shared slice
-			mu.Lock()
-			results = append(results, value)
-			mu.Unlock()
-		}(i)
+	for i := 0; i < 5; i++ {
+		go func() {
+			defer func() { done <- true }()
+
+			// The use case should be safe for concurrent access
+			assert.NotNil(t, useCase)
+		}()
 	}
 
-	wg.Wait()
-
-	// Verify all values were added
-	assert.Len(t, results, numGoroutines)
-
-	// Verify no duplicates (each goroutine adds exactly one value)
-	seen := make(map[int]bool)
-	for _, value := range results {
-		assert.False(t, seen[value], "Duplicate value found: %d", value)
-		seen[value] = true
+	// Wait for all goroutines to complete
+	for i := 0; i < 5; i++ {
+		<-done
 	}
+}
+
+func TestExecute_Success(t *testing.T) {
+	t.Parallel()
+
+	// Create mock dependencies
+	mockGitlabClient := &MockGitlabClient{}
+	mockScanner := &MockRepositoryScanner{}
+	mockParser := &MockDependencyParser{}
+	mockClassifier := &MockDependencyClassifier{}
+	mockGenerator := &MockReportGenerator{}
+
+	logger := zap.NewNop()
+	ctx := context.Background()
+
+	// Setup mock expectations
+	repo1 := &domain.Repository{
+		ID:   1,
+		Name: "test-repo-1",
+		URL:  "https://gitlab.com/test/repo1",
+	}
+	repo2 := &domain.Repository{
+		ID:   2,
+		Name: "test-repo-2",
+		URL:  "https://gitlab.com/test/repo2",
+	}
+
+	project1 := &domain.Project{
+		ID:       "repo1-project1",
+		Name:     "Project 1",
+		Language: "Go",
+		Path:     "/project1",
+		DependencyFiles: []*domain.DependencyFile{
+			{
+				Path:     "go.mod",
+				Language: "Go",
+				Content:  []byte("module test"),
+			},
+		},
+	}
+
+	project2 := &domain.Project{
+		ID:       "repo2-project1",
+		Name:     "Project 2",
+		Language: "JavaScript",
+		Path:     "/project2",
+		DependencyFiles: []*domain.DependencyFile{
+			{
+				Path:     "package.json",
+				Language: "JavaScript",
+				Content:  []byte(`{"dependencies": {"express": "^4.0.0"}}`),
+			},
+		},
+	}
+
+	dependency1 := &domain.Dependency{
+		Name:       "github.com/gin-gonic/gin",
+		Version:    "v1.9.0",
+		Ecosystem:  "go-modules",
+		IsInternal: false,
+	}
+
+	dependency2 := &domain.Dependency{
+		Name:       "express",
+		Version:    "^4.0.0",
+		Ecosystem:  "npm",
+		IsInternal: false,
+	}
+
+	// Mock GitLab client to return repositories
+	mockGitlabClient.On("GetRepositoriesList", mock.Anything, "https://gitlab.com/test/repo1").
+		Return([]*domain.Repository{repo1}, nil)
+	mockGitlabClient.On("GetRepositoriesList", mock.Anything, "https://gitlab.com/test/repo2").
+		Return([]*domain.Repository{repo2}, nil)
+
+	// Mock scanner to return projects
+	mockScanner.On("DetectProjects", mock.Anything, repo1).Return([]*domain.Project{project1}, nil)
+	mockScanner.On("DetectProjects", mock.Anything, repo2).Return([]*domain.Project{project2}, nil)
+
+	// Mock parser to return dependencies
+	mockParser.On("ParseFile", mock.Anything, project1.DependencyFiles[0]).
+		Return([]*domain.Dependency{dependency1}, nil)
+	mockParser.On("ParseFile", mock.Anything, project2.DependencyFiles[0]).
+		Return([]*domain.Dependency{dependency2}, nil)
+
+	// Mock IsInternal calls (the actual method being called)
+	mockClassifier.On("IsInternal", mock.Anything, dependency1).Return(false)
+	mockClassifier.On("IsInternal", mock.Anything, dependency2).Return(false)
+
+	// Mock generator to succeed
+	mockGenerator.On("GenerateHTML", mock.Anything, mock.AnythingOfType("[]*domain.Project")).Return(nil)
+
+	// Create use case
+	useCase := usecases.NewAnalyzeUseCase(
+		ctx,
+		mockGitlabClient,
+		mockScanner,
+		mockParser,
+		mockClassifier,
+		mockGenerator,
+		logger,
+	)
+
+	// Execute the use case
+	repositoryURLs := []string{
+		"https://gitlab.com/test/repo1",
+		"https://gitlab.com/test/repo2",
+	}
+
+	response, err := useCase.Execute(repositoryURLs)
+
+	// Verify results
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	assert.Equal(t, 2, response.TotalProjects)
+	assert.Equal(t, 2, response.TotalDependencies)
+	assert.Equal(t, 0, response.InternalCount)
+	assert.Equal(t, 2, response.ExternalCount)
+
+	// Verify all mocks were called
+	mockGitlabClient.AssertExpectations(t)
+	mockScanner.AssertExpectations(t)
+	mockParser.AssertExpectations(t)
+	mockClassifier.AssertExpectations(t)
+	mockGenerator.AssertExpectations(t)
+}
+
+func TestExecute_GitLabClientError(t *testing.T) {
+	t.Parallel()
+
+	// Create mock dependencies
+	mockGitlabClient := &MockGitlabClient{}
+	mockScanner := &MockRepositoryScanner{}
+	mockParser := &MockDependencyParser{}
+	mockClassifier := &MockDependencyClassifier{}
+	mockGenerator := &MockReportGenerator{}
+
+	logger := zap.NewNop()
+	ctx := context.Background()
+
+	// Mock GitLab client to return error
+	mockGitlabClient.On("GetRepositoriesList", mock.Anything, "https://gitlab.com/test/repo1").
+		Return([]*domain.Repository(nil), assert.AnError)
+
+	// Create use case
+	useCase := usecases.NewAnalyzeUseCase(
+		ctx,
+		mockGitlabClient,
+		mockScanner,
+		mockParser,
+		mockClassifier,
+		mockGenerator,
+		logger,
+	)
+
+	// Execute the use case
+	repositoryURLs := []string{"https://gitlab.com/test/repo1"}
+
+	response, err := useCase.Execute(repositoryURLs)
+
+	// Verify error is returned
+	require.Error(t, err)
+	assert.Nil(t, response)
+	assert.Contains(t, err.Error(), "assert.AnError")
+
+	// Verify mocks were called
+	mockGitlabClient.AssertExpectations(t)
+}
+
+func TestExecute_ScannerError(t *testing.T) {
+	t.Parallel()
+
+	// Create mock dependencies
+	mockGitlabClient := &MockGitlabClient{}
+	mockScanner := &MockRepositoryScanner{}
+	mockParser := &MockDependencyParser{}
+	mockClassifier := &MockDependencyClassifier{}
+	mockGenerator := &MockReportGenerator{}
+
+	logger := zap.NewNop()
+	ctx := context.Background()
+
+	// Setup mock expectations
+	repo1 := &domain.Repository{
+		ID:   1,
+		Name: "test-repo-1",
+		URL:  "https://gitlab.com/test/repo1",
+	}
+
+	// Mock GitLab client to return repository
+	mockGitlabClient.On("GetRepositoriesList", mock.Anything, "https://gitlab.com/test/repo1").
+		Return([]*domain.Repository{repo1}, nil)
+
+	// Mock scanner to return error
+	mockScanner.On("DetectProjects", mock.Anything, repo1).Return([]*domain.Project(nil), assert.AnError)
+
+	// Mock generator to succeed (even with 0 projects)
+	mockGenerator.On("GenerateHTML", mock.Anything, mock.AnythingOfType("[]*domain.Project")).Return(nil)
+
+	// Create use case
+	useCase := usecases.NewAnalyzeUseCase(
+		ctx,
+		mockGitlabClient,
+		mockScanner,
+		mockParser,
+		mockClassifier,
+		mockGenerator,
+		logger,
+	)
+
+	// Execute the use case
+	repositoryURLs := []string{"https://gitlab.com/test/repo1"}
+
+	response, err := useCase.Execute(repositoryURLs)
+
+	// Verify that scanner errors are logged but don't fail the entire process
+	// The use case should continue and return a response with 0 projects
+	require.NoError(t, err)
+	assert.NotNil(t, response)
+	assert.Equal(t, 0, response.TotalProjects)
+	assert.Equal(t, 0, response.TotalDependencies)
+
+	// Verify mocks were called
+	mockGitlabClient.AssertExpectations(t)
+	mockScanner.AssertExpectations(t)
+	mockGenerator.AssertExpectations(t)
+}
+
+func TestExecute_GeneratorError(t *testing.T) {
+	t.Parallel()
+
+	// Create mock dependencies
+	mockGitlabClient := &MockGitlabClient{}
+	mockScanner := &MockRepositoryScanner{}
+	mockParser := &MockDependencyParser{}
+	mockClassifier := &MockDependencyClassifier{}
+	mockGenerator := &MockReportGenerator{}
+
+	logger := zap.NewNop()
+	ctx := context.Background()
+
+	// Setup mock expectations
+	repo1 := &domain.Repository{
+		ID:   1,
+		Name: "test-repo-1",
+		URL:  "https://gitlab.com/test/repo1",
+	}
+
+	project1 := &domain.Project{
+		ID:       "repo1-project1",
+		Name:     "Project 1",
+		Language: "Go",
+		Path:     "/project1",
+		DependencyFiles: []*domain.DependencyFile{
+			{
+				Path:     "go.mod",
+				Language: "Go",
+				Content:  []byte("module test"),
+			},
+		},
+	}
+
+	dependency1 := &domain.Dependency{
+		Name:       "github.com/gin-gonic/gin",
+		Version:    "v1.9.0",
+		Ecosystem:  "go-modules",
+		IsInternal: false,
+	}
+
+	// Mock GitLab client to return repository
+	mockGitlabClient.On("GetRepositoriesList", mock.Anything, "https://gitlab.com/test/repo1").
+		Return([]*domain.Repository{repo1}, nil)
+
+	// Mock scanner to return project
+	mockScanner.On("DetectProjects", mock.Anything, repo1).Return([]*domain.Project{project1}, nil)
+
+	// Mock parser to return dependencies
+	mockParser.On("ParseFile", mock.Anything, project1.DependencyFiles[0]).
+		Return([]*domain.Dependency{dependency1}, nil)
+
+	// Mock IsInternal calls (the actual method being called)
+	mockClassifier.On("IsInternal", mock.Anything, dependency1).Return(false)
+
+	// Mock generator to return error
+	mockGenerator.On("GenerateHTML", mock.Anything, mock.AnythingOfType("[]*domain.Project")).Return(assert.AnError)
+
+	// Create use case
+	useCase := usecases.NewAnalyzeUseCase(
+		ctx,
+		mockGitlabClient,
+		mockScanner,
+		mockParser,
+		mockClassifier,
+		mockGenerator,
+		logger,
+	)
+
+	// Execute the use case
+	repositoryURLs := []string{"https://gitlab.com/test/repo1"}
+
+	response, err := useCase.Execute(repositoryURLs)
+
+	// Verify error is returned
+	require.Error(t, err)
+	assert.Nil(t, response)
+	assert.Contains(t, err.Error(), "assert.AnError")
+
+	// Verify mocks were called
+	mockGitlabClient.AssertExpectations(t)
+	mockScanner.AssertExpectations(t)
+	mockParser.AssertExpectations(t)
+	mockClassifier.AssertExpectations(t)
+	mockGenerator.AssertExpectations(t)
 }

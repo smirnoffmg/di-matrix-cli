@@ -60,33 +60,35 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("config file does not exist: %s", configPath)
 	}
 
-	viper.SetConfigFile(configPath)
-	viper.SetConfigType("yaml")
+	// Create a new Viper instance to avoid data races in concurrent tests
+	v := viper.New()
+	v.SetConfigFile(configPath)
+	v.SetConfigType("yaml")
 
 	// Set default values
-	setDefaultValues()
+	setDefaultValues(v)
 
 	// Enable reading from environment variables
-	viper.AutomaticEnv()
+	v.AutomaticEnv()
 
 	// Set environment variable key replacer for nested config
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Bind environment variables to config keys
-	_ = viper.BindEnv("gitlab.base_url", "GITLAB_BASE_URL")
-	_ = viper.BindEnv("gitlab.token", "GITLAB_TOKEN")
-	_ = viper.BindEnv("output.html_file", "OUTPUT_HTML_FILE")
-	_ = viper.BindEnv("output.title", "OUTPUT_TITLE")
-	_ = viper.BindEnv("timeout.analysis_timeout_minutes", "ANALYSIS_TIMEOUT_MINUTES")
+	_ = v.BindEnv("gitlab.base_url", "GITLAB_BASE_URL")
+	_ = v.BindEnv("gitlab.token", "GITLAB_TOKEN")
+	_ = v.BindEnv("output.html_file", "OUTPUT_HTML_FILE")
+	_ = v.BindEnv("output.title", "OUTPUT_TITLE")
+	_ = v.BindEnv("timeout.analysis_timeout_minutes", "ANALYSIS_TIMEOUT_MINUTES")
 
 	// Read config file
-	if err := viper.ReadInConfig(); err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	// Unmarshal into struct
 	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
+	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -99,33 +101,33 @@ func LoadConfig(configPath string) (*Config, error) {
 }
 
 // setDefaultValues sets default configuration values
-func setDefaultValues() {
+func setDefaultValues(v *viper.Viper) {
 	// Output defaults
-	viper.SetDefault("output.html_file", "dependency-matrix.html")
-	viper.SetDefault("output.title", "Dependency Matrix Report")
+	v.SetDefault("output.html_file", "dependency-matrix.html")
+	v.SetDefault("output.title", "Dependency Matrix Report")
 
 	// Repository defaults
-	viper.SetDefault("repositories", []RepositoryConfig{})
+	v.SetDefault("repositories", []RepositoryConfig{})
 
 	// Internal classification defaults
-	viper.SetDefault("internal.domains", []string{})
-	viper.SetDefault("internal.patterns", []string{})
+	v.SetDefault("internal.domains", []string{})
+	v.SetDefault("internal.patterns", []string{})
 
 	// Logging defaults
-	viper.SetDefault("logging.level", "info")
+	v.SetDefault("logging.level", "info")
 
 	// Concurrency defaults
-	viper.SetDefault("concurrency.repository_workers", 4)
-	viper.SetDefault("concurrency.file_fetcher_workers", 8)
-	viper.SetDefault("concurrency.parser_workers", 6)
-	viper.SetDefault("concurrency.generator_workers", 2)
-	viper.SetDefault("concurrency.queue_buffer_size", 50)
-	viper.SetDefault("concurrency.max_concurrent_repos", 10)
-	viper.SetDefault("concurrency.max_concurrent_files", 20)
-	viper.SetDefault("concurrency.max_concurrent_parsers", 15)
+	v.SetDefault("concurrency.repository_workers", 4)
+	v.SetDefault("concurrency.file_fetcher_workers", 8)
+	v.SetDefault("concurrency.parser_workers", 6)
+	v.SetDefault("concurrency.generator_workers", 2)
+	v.SetDefault("concurrency.queue_buffer_size", 50)
+	v.SetDefault("concurrency.max_concurrent_repos", 10)
+	v.SetDefault("concurrency.max_concurrent_files", 20)
+	v.SetDefault("concurrency.max_concurrent_parsers", 15)
 
 	// Timeout defaults (10 minutes as per user preference for console operations)
-	viper.SetDefault("timeout.analysis_timeout_minutes", 10)
+	v.SetDefault("timeout.analysis_timeout_minutes", 10)
 }
 
 // validateConfig validates the configuration

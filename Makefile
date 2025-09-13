@@ -10,13 +10,8 @@ build: ## Build the CLI application
 	go build -o di-matrix-cli ./cmd
 
 test: ## Run tests
-	go test ./... -v
-
-test-integration: ## Run integration tests (requires environment variables)
-	go test ./tests/integration/... -v -tags=integration
-
-test-unit: ## Run unit tests only
-	go test ./internal/... -v
+	go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
+	go tool cover -html=coverage.out -o coverage.html
 
 clean: ## Clean build artifacts
 	rm -f di-matrix-cli coverage.out coverage.html

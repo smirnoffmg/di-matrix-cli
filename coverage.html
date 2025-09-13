@@ -1,0 +1,2538 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>cmd: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+
+				<option value="file0">di-matrix-cli/cmd/main.go (0.0%)</option>
+
+				<option value="file1">di-matrix-cli/internal/classifier/classifier.go (75.0%)</option>
+
+				<option value="file2">di-matrix-cli/internal/config/config.go (88.9%)</option>
+
+				<option value="file3">di-matrix-cli/internal/generator/generator.go (90.9%)</option>
+
+				<option value="file4">di-matrix-cli/internal/gitlab/client.go (62.9%)</option>
+
+				<option value="file5">di-matrix-cli/internal/logger/logger.go (94.1%)</option>
+
+				<option value="file6">di-matrix-cli/internal/parser/parser.go (68.5%)</option>
+
+				<option value="file7">di-matrix-cli/internal/scanner/scanner.go (97.3%)</option>
+
+				<option value="file8">di-matrix-cli/internal/usecases/analyze.go (79.5%)</option>
+
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+
+			</div>
+		</div>
+		<div id="content">
+
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "context"
+        "di-matrix-cli/internal/classifier"
+        "di-matrix-cli/internal/config"
+        "di-matrix-cli/internal/generator"
+        "di-matrix-cli/internal/gitlab"
+        "di-matrix-cli/internal/logger"
+        "di-matrix-cli/internal/parser"
+        "di-matrix-cli/internal/scanner"
+        "di-matrix-cli/internal/usecases"
+        "fmt"
+        "os"
+        "time"
+
+        "github.com/spf13/cobra"
+        "github.com/spf13/viper"
+        "go.uber.org/zap"
+)
+
+var (
+        configFile string
+        outputFile string
+        title      string
+        debug      bool
+        timeout    int
+)
+
+// rootCmd represents the base command when called without any subcommands
+var rootCmd = &amp;cobra.Command{
+        Use:   "di-matrix-cli",
+        Short: "Dependency Matrix CLI - Analyze GitLab repositories and generate dependency matrices",
+        Long: `A command-line tool that analyzes multiple GitLab repositories to generate
+comprehensive dependency matrices using event-driven architecture. The tool uses GitLab API
+for repository access, leverages dependency parsers for multi-language support, handles
+monorepos with mixed project types, and generates an interactive HTML report through
+scalable worker pools.`,
+}
+
+// analyzeCmd represents the analyze command
+var analyzeCmd = &amp;cobra.Command{
+        Use:   "analyze",
+        Short: "Analyze repositories and generate dependency matrix",
+        Long: `Analyze the configured GitLab repositories and generate a comprehensive
+dependency matrix report in HTML format using event-driven architecture.
+The analysis runs asynchronously with real-time progress reporting through
+event-driven worker pools.`,
+        RunE: runAnalyze,
+}
+
+func setupCommands() <span class="cov0" title="0">{
+        rootCmd.AddCommand(analyzeCmd)
+
+        // Global flags
+        rootCmd.PersistentFlags().StringVarP(&amp;configFile, "config", "c", "", "Path to configuration file (required)")
+        if err := rootCmd.MarkPersistentFlagRequired("config"); err != nil </span><span class="cov0" title="0">{
+                panic(fmt.Sprintf("failed to mark config flag as required: %v", err))</span>
+        }
+
+        // Analyze command flags
+        <span class="cov0" title="0">analyzeCmd.Flags().StringVarP(&amp;outputFile, "output", "o", "", "Output HTML file path (overrides config)")
+        analyzeCmd.Flags().StringVarP(&amp;title, "title", "t", "", "Report title (overrides config)")
+        analyzeCmd.Flags().BoolVarP(&amp;debug, "debug", "d", false, "Enable debug logging with verbose output")
+        analyzeCmd.Flags().IntVarP(&amp;timeout, "timeout", "", 0,
+                "Analysis timeout in minutes (overrides config, 0 = use config default)")
+
+        // Bind flags to viper
+        if err := viper.BindPFlag("output.html_file", analyzeCmd.Flags().Lookup("output")); err != nil </span><span class="cov0" title="0">{
+                panic(fmt.Sprintf("failed to bind output flag: %v", err))</span>
+        }
+        <span class="cov0" title="0">if err := viper.BindPFlag("output.title", analyzeCmd.Flags().Lookup("title")); err != nil </span><span class="cov0" title="0">{
+                panic(fmt.Sprintf("failed to bind title flag: %v", err))</span>
+        }
+        <span class="cov0" title="0">if err := viper.BindPFlag("timeout.analysis_timeout_minutes", analyzeCmd.Flags().Lookup("timeout")); err != nil </span><span class="cov0" title="0">{
+                panic(fmt.Sprintf("failed to bind timeout flag: %v", err))</span>
+        }
+}
+
+func main() <span class="cov0" title="0">{
+        setupCommands()
+        if err := rootCmd.Execute(); err != nil </span><span class="cov0" title="0">{
+                fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+                os.Exit(1)
+        }</span>
+}
+
+func runAnalyze(cmd *cobra.Command, args []string) error <span class="cov0" title="0">{
+        fmt.Println("🔍 Starting dependency matrix analysis...")
+
+        // Handle debug flag manually since it's a boolean
+        if debug </span><span class="cov0" title="0">{
+                viper.Set("logging.level", "debug")
+        }</span>
+
+        // Load configuration
+        <span class="cov0" title="0">cfg, err := config.LoadConfig(configFile)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to load configuration: %w", err)
+        }</span>
+
+        // Determine timeout duration (CLI flag overrides config)
+        <span class="cov0" title="0">timeoutMinutes := cfg.Timeout.AnalysisTimeoutMinutes
+        if timeout &gt; 0 </span><span class="cov0" title="0">{
+                timeoutMinutes = timeout
+        }</span>
+        <span class="cov0" title="0">timeoutDuration := time.Duration(timeoutMinutes) * time.Minute
+
+        fmt.Printf("⏱️  Analysis timeout: %v\n", timeoutDuration)
+
+        // Create context with timeout
+        ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
+        defer cancel()
+
+        // Set debug level if debug flag is enabled
+        if debug </span><span class="cov0" title="0">{
+                logger.SetLevel(zap.DebugLevel)
+        }</span>
+
+        // Create dependencies
+        <span class="cov0" title="0">l := logger.GetLogger()
+
+        // Initialize GitLab client
+        gitlabClient, err := gitlab.NewClient(cfg.GitLab.BaseURL, cfg.GitLab.Token, l)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create GitLab client: %w", err)
+        }</span>
+
+        // Initialize scanner
+        <span class="cov0" title="0">fileScanner := scanner.NewScanner(gitlabClient, l)
+
+        // Initialize parser
+        dependencyParser := parser.NewParser()
+
+        // Initialize classifier with internal patterns
+        dependencyClassifier := classifier.NewClassifier(cfg.Internal.Patterns)
+
+        // Initialize generator
+        reportGenerator := generator.NewGenerator(cfg.Output.HTMLFile)
+
+        // Create analyze use case with dependency injection
+        analyzeUseCase := usecases.NewAnalyzeUseCase(
+                ctx,
+                gitlabClient,
+                fileScanner,
+                dependencyParser,
+                dependencyClassifier,
+                reportGenerator,
+                l,
+        )
+
+        // Extract repository URLs from config
+        repositoryURLs := make([]string, len(cfg.Repositories))
+        for i, repo := range cfg.Repositories </span><span class="cov0" title="0">{
+                repositoryURLs[i] = repo.URL
+        }</span>
+
+        <span class="cov0" title="0">response, err := analyzeUseCase.Execute(repositoryURLs)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to analyze dependency matrix: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">l.Info("Analysis completed successfully", zap.Any("response", response))
+
+        // Print summary
+        fmt.Println("\n🎉 Analysis completed successfully!")
+        fmt.Printf("📈 Summary:\n")
+        fmt.Printf("  • Total Projects: %d\n", response.TotalProjects)
+        fmt.Printf("  • Total Dependencies: %d\n", response.TotalDependencies)
+        fmt.Printf("  • Internal Dependencies: %d\n", response.InternalCount)
+        fmt.Printf("  • External Dependencies: %d\n", response.ExternalCount)
+        return nil</span>
+}
+</pre>
+
+		<pre class="file" id="file1" style="display: none">package classifier
+
+import (
+        "context"
+        "di-matrix-cli/internal/domain"
+        "path/filepath"
+        "strings"
+)
+
+// Classifier determines if dependencies are internal or external
+type Classifier struct {
+        internalPatterns []string
+}
+
+// NewClassifier creates a new dependency classifier
+func NewClassifier(internalPatterns []string) *Classifier <span class="cov9" title="27">{
+        return &amp;Classifier{
+                internalPatterns: internalPatterns,
+        }
+}</span>
+
+// ClassifyDependencies classifies a list of dependencies
+func (c *Classifier) ClassifyDependencies(
+        ctx context.Context,
+        dependencies []*domain.Dependency,
+) ([]*domain.Dependency, error) <span class="cov5" title="6">{
+        if dependencies == nil </span><span class="cov1" title="1">{
+                return nil, nil
+        }</span>
+
+        // Classify each dependency
+        <span class="cov5" title="5">for _, dep := range dependencies </span><span class="cov6" title="9">{
+                if dep != nil </span><span class="cov6" title="8">{
+                        dep.IsInternal = c.IsInternal(ctx, dep)
+                }</span>
+        }
+
+        <span class="cov5" title="5">return dependencies, nil</span>
+}
+
+// IsInternal checks if a single dependency is internal
+func (c *Classifier) IsInternal(ctx context.Context, dependency *domain.Dependency) bool <span class="cov9" title="29">{
+        if dependency == nil || dependency.Name == "" </span><span class="cov1" title="1">{
+                return false
+        }</span>
+
+        // Check against all internal patterns
+        <span class="cov9" title="28">for _, pattern := range c.internalPatterns </span><span class="cov10" title="31">{
+                if c.matchesPattern(dependency.Name, pattern) </span><span class="cov8" title="16">{
+                        return true
+                }</span>
+        }
+
+        <span class="cov7" title="12">return false</span>
+}
+
+// matchesPattern checks if a dependency name matches a given pattern
+func (c *Classifier) matchesPattern(name, pattern string) bool <span class="cov10" title="31">{
+        // Handle exact matches
+        if name == pattern </span><span class="cov1" title="1">{
+                return true
+        }</span>
+
+        // Handle wildcard patterns
+        <span class="cov9" title="30">if c.matchesWildcardPattern(name, pattern) </span><span class="cov8" title="15">{
+                return true
+        }</span>
+
+        // Handle prefix patterns
+        <span class="cov8" title="15">if c.matchesPrefixPattern(name, pattern) </span><span class="cov0" title="0">{
+                return true
+        }</span>
+
+        // Handle suffix patterns
+        <span class="cov8" title="15">if c.matchesSuffixPattern(name, pattern) </span><span class="cov0" title="0">{
+                return true
+        }</span>
+
+        // Handle contains patterns
+        <span class="cov8" title="15">if c.matchesContainsPattern(name, pattern) </span><span class="cov0" title="0">{
+                return true
+        }</span>
+
+        <span class="cov8" title="15">return false</span>
+}
+
+// matchesWildcardPattern checks if name matches a wildcard pattern
+func (c *Classifier) matchesWildcardPattern(name, pattern string) bool <span class="cov9" title="30">{
+        if !strings.Contains(pattern, "*") </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        <span class="cov9" title="30">matched, err := filepath.Match(pattern, name)
+        return err == nil &amp;&amp; matched</span>
+}
+
+// matchesPrefixPattern checks if name matches a prefix pattern
+func (c *Classifier) matchesPrefixPattern(name, pattern string) bool <span class="cov8" title="15">{
+        if !strings.HasSuffix(pattern, "/") &amp;&amp; !strings.HasSuffix(pattern, ".") </span><span class="cov8" title="15">{
+                return false
+        }</span>
+
+        <span class="cov0" title="0">prefix := strings.TrimSuffix(pattern, "/")
+        prefix = strings.TrimSuffix(prefix, ".")
+        return strings.HasPrefix(name, prefix)</span>
+}
+
+// matchesSuffixPattern checks if name matches a suffix pattern
+func (c *Classifier) matchesSuffixPattern(name, pattern string) bool <span class="cov8" title="15">{
+        if !strings.HasPrefix(pattern, "/") &amp;&amp; !strings.HasPrefix(pattern, ".") </span><span class="cov8" title="15">{
+                return false
+        }</span>
+
+        <span class="cov0" title="0">suffix := strings.TrimPrefix(pattern, "/")
+        suffix = strings.TrimPrefix(suffix, ".")
+        return strings.HasSuffix(name, suffix)</span>
+}
+
+// matchesContainsPattern checks if name contains the pattern
+func (c *Classifier) matchesContainsPattern(name, pattern string) bool <span class="cov8" title="15">{
+        // Only match contains if pattern doesn't have special characters
+        hasSpecialChars := strings.Contains(pattern, "*") ||
+                strings.HasSuffix(pattern, "/") ||
+                strings.HasSuffix(pattern, ".") ||
+                strings.HasPrefix(pattern, "/") ||
+                strings.HasPrefix(pattern, ".")
+
+        return !hasSpecialChars &amp;&amp; strings.Contains(name, pattern)
+}</span>
+</pre>
+
+		<pre class="file" id="file2" style="display: none">package config
+
+import (
+        "fmt"
+        "os"
+        "strings"
+
+        "github.com/spf13/viper"
+)
+
+// Config represents the main configuration structure
+type Config struct {
+        GitLab       GitLabConfig       `yaml:"gitlab"       mapstructure:"gitlab"`
+        Repositories []RepositoryConfig `yaml:"repositories" mapstructure:"repositories"`
+        Internal     InternalConfig     `yaml:"internal"     mapstructure:"internal"`
+        Output       OutputConfig       `yaml:"output"       mapstructure:"output"`
+        Timeout      TimeoutConfig      `yaml:"timeout"      mapstructure:"timeout"`
+}
+
+// GitLabConfig represents GitLab connection settings
+type GitLabConfig struct {
+        BaseURL string `yaml:"base_url" mapstructure:"base_url"`
+        Token   string `yaml:"token"    mapstructure:"token"`
+}
+
+// RepositoryConfig represents a repository to analyze
+type RepositoryConfig struct {
+        URL    string   `yaml:"url"              mapstructure:"url"`
+        ID     int      `yaml:"id,omitempty"     mapstructure:"id"`
+        Name   string   `yaml:"name,omitempty"   mapstructure:"name"`
+        Branch string   `yaml:"branch,omitempty" mapstructure:"branch"`
+        Paths  []string `yaml:"paths,omitempty"  mapstructure:"paths"`
+}
+
+// InternalConfig represents internal dependency classification settings
+type InternalConfig struct {
+        Domains  []string `yaml:"domains"  mapstructure:"domains"`
+        Patterns []string `yaml:"patterns" mapstructure:"patterns"`
+}
+
+// OutputConfig represents output settings
+type OutputConfig struct {
+        HTMLFile string `yaml:"html_file" mapstructure:"html_file"`
+        Title    string `yaml:"title"     mapstructure:"title"`
+}
+
+// TimeoutConfig represents timeout configuration
+type TimeoutConfig struct {
+        AnalysisTimeoutMinutes int `yaml:"analysis_timeout_minutes" mapstructure:"analysis_timeout_minutes"`
+}
+
+// LoadConfig loads configuration from file and environment variables
+func LoadConfig(configPath string) (*Config, error) <span class="cov10" title="8">{
+        if configPath == "" </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("config path is required")
+        }</span>
+
+        // Check if config file exists
+        <span class="cov10" title="8">if _, err := os.Stat(configPath); os.IsNotExist(err) </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("config file does not exist: %s", configPath)
+        }</span>
+
+        // Create a new Viper instance to avoid data races in concurrent tests
+        <span class="cov9" title="7">v := viper.New()
+        v.SetConfigFile(configPath)
+        v.SetConfigType("yaml")
+
+        // Set default values
+        setDefaultValues(v)
+
+        // Enable reading from environment variables
+        v.AutomaticEnv()
+
+        // Set environment variable key replacer for nested config
+        v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+        // Bind environment variables to config keys
+        _ = v.BindEnv("gitlab.base_url", "GITLAB_BASE_URL")
+        _ = v.BindEnv("gitlab.token", "GITLAB_TOKEN")
+        _ = v.BindEnv("output.html_file", "OUTPUT_HTML_FILE")
+        _ = v.BindEnv("output.title", "OUTPUT_TITLE")
+        _ = v.BindEnv("timeout.analysis_timeout_minutes", "ANALYSIS_TIMEOUT_MINUTES")
+
+        // Read config file
+        if err := v.ReadInConfig(); err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("failed to read config file: %w", err)
+        }</span>
+
+        // Unmarshal into struct
+        <span class="cov8" title="6">var config Config
+        if err := v.Unmarshal(&amp;config); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+        }</span>
+
+        // Validate configuration
+        <span class="cov8" title="6">if err := validateConfig(config); err != nil </span><span class="cov5" title="3">{
+                return nil, fmt.Errorf("config validation failed: %w", err)
+        }</span>
+
+        <span class="cov5" title="3">return &amp;config, nil</span>
+}
+
+// setDefaultValues sets default configuration values
+func setDefaultValues(v *viper.Viper) <span class="cov9" title="7">{
+        // Output defaults
+        v.SetDefault("output.html_file", "dependency-matrix.html")
+        v.SetDefault("output.title", "Dependency Matrix Report")
+
+        // Repository defaults
+        v.SetDefault("repositories", []RepositoryConfig{})
+
+        // Internal classification defaults
+        v.SetDefault("internal.domains", []string{})
+        v.SetDefault("internal.patterns", []string{})
+
+        // Logging defaults
+        v.SetDefault("logging.level", "info")
+
+        // Concurrency defaults
+        v.SetDefault("concurrency.repository_workers", 4)
+        v.SetDefault("concurrency.file_fetcher_workers", 8)
+        v.SetDefault("concurrency.parser_workers", 6)
+        v.SetDefault("concurrency.generator_workers", 2)
+        v.SetDefault("concurrency.queue_buffer_size", 50)
+        v.SetDefault("concurrency.max_concurrent_repos", 10)
+        v.SetDefault("concurrency.max_concurrent_files", 20)
+        v.SetDefault("concurrency.max_concurrent_parsers", 15)
+
+        // Timeout defaults (10 minutes as per user preference for console operations)
+        v.SetDefault("timeout.analysis_timeout_minutes", 10)
+}</span>
+
+// validateConfig validates the configuration
+func validateConfig(config Config) error <span class="cov8" title="6">{
+        if config.GitLab.BaseURL == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("gitlab.base_url is required")
+        }</span>
+
+        <span class="cov8" title="6">if config.GitLab.Token == "" </span><span class="cov1" title="1">{
+                return fmt.Errorf("gitlab.token is required")
+        }</span>
+
+        <span class="cov7" title="5">if len(config.Repositories) == 0 </span><span class="cov1" title="1">{
+                return fmt.Errorf("at least one repository must be configured")
+        }</span>
+
+        <span class="cov7" title="4">if config.Output.HTMLFile == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("output.html_file is required")
+        }</span>
+
+        <span class="cov7" title="4">if config.Output.Title == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("output.title is required")
+        }</span>
+
+        // Validate repositories
+        <span class="cov7" title="4">for i, repo := range config.Repositories </span><span class="cov7" title="4">{
+                if repo.URL == "" &amp;&amp; repo.ID &lt;= 0 </span><span class="cov1" title="1">{
+                        return fmt.Errorf("repository[%d] must have either url or id specified", i)
+                }</span>
+                <span class="cov5" title="3">if repo.URL != "" &amp;&amp; repo.ID &gt; 0 </span><span class="cov0" title="0">{
+                        return fmt.Errorf("repository[%d] should not have both url and id specified", i)
+                }</span>
+        }
+
+        <span class="cov5" title="3">return nil</span>
+}
+</pre>
+
+		<pre class="file" id="file3" style="display: none">package generator
+
+import (
+        "context"
+        "di-matrix-cli/internal/domain"
+        _ "embed"
+        "encoding/csv"
+        "encoding/json"
+        "fmt"
+        "html/template"
+        "os"
+        "path/filepath"
+        "sort"
+        "strconv"
+)
+
+//go:embed template.html
+var templateContent string
+
+// Generator creates HTML reports from project dependencies
+type Generator struct {
+        outputPath string
+}
+
+// NewGenerator creates a new report generator
+func NewGenerator(outputPath string) *Generator <span class="cov8" title="11">{
+        return &amp;Generator{
+                outputPath: outputPath,
+        }
+}</span>
+
+// OutputPath returns the output path
+func (g *Generator) OutputPath() string <span class="cov1" title="1">{
+        return g.outputPath
+}</span>
+
+// GenerateSummary creates aggregated statistics (template embedded)
+func (g *Generator) GenerateSummary(ctx context.Context, projects []*domain.Project) map[string]interface{} <span class="cov5" title="5">{
+        languages := make(map[string]int)
+        internalExternal := map[string]int{"internal": 0, "external": 0}
+        ecosystems := make(map[string]int)
+        totalDependencies := 0
+
+        // Count dependencies and categorize
+        for _, project := range projects </span><span class="cov6" title="6">{
+                // Count by language
+                if project.Language != "" </span><span class="cov6" title="6">{
+                        languages[project.Language]++
+                }</span>
+
+                // Count dependencies
+                <span class="cov6" title="6">for _, dep := range project.Dependencies </span><span class="cov8" title="12">{
+                        totalDependencies++
+
+                        // Count internal/external
+                        if dep.IsInternal </span><span class="cov4" title="3">{
+                                internalExternal["internal"]++
+                        }</span> else<span class="cov7" title="9"> {
+                                internalExternal["external"]++
+                        }</span>
+
+                        // Count by ecosystem
+                        <span class="cov8" title="12">if dep.Ecosystem != "" </span><span class="cov8" title="12">{
+                                ecosystems[dep.Ecosystem]++
+                        }</span>
+                }
+        }
+
+        <span class="cov5" title="5">return map[string]interface{}{
+                "total_projects":     len(projects),
+                "total_dependencies": totalDependencies,
+                "languages":          languages,
+                "internal_external":  internalExternal,
+                "ecosystems":         ecosystems,
+        }</span>
+}
+
+// filterProjectsWithDependencies filters out projects with zero dependencies
+func (g *Generator) filterProjectsWithDependencies(projects []*domain.Project) []*domain.Project <span class="cov4" title="3">{
+        var filteredProjects []*domain.Project
+        for _, project := range projects </span><span class="cov5" title="4">{
+                if len(project.Dependencies) &gt; 0 </span><span class="cov5" title="4">{
+                        filteredProjects = append(filteredProjects, project)
+                }</span>
+        }
+        <span class="cov4" title="3">return filteredProjects</span>
+}
+
+// groupProjectsByLanguage groups projects by their language
+func (g *Generator) groupProjectsByLanguage(projects []*domain.Project) map[string][]*domain.Project <span class="cov4" title="3">{
+        projectsByLanguage := make(map[string][]*domain.Project)
+        for _, project := range projects </span><span class="cov5" title="4">{
+                projectsByLanguage[project.Language] = append(projectsByLanguage[project.Language], project)
+        }</span>
+        <span class="cov4" title="3">return projectsByLanguage</span>
+}
+
+// sortDependencies sorts dependencies by type (internal first, external after) and then alphabetically
+func (g *Generator) sortDependencies(
+        dependencies []string,
+        projectDeps map[string]map[string]*domain.Dependency,
+) []string <span class="cov6" title="7">{
+        // Create a slice of dependency info for sorting
+        type depInfo struct {
+                name       string
+                isInternal bool
+        }
+
+        var depInfos []depInfo
+        for _, depName := range dependencies </span><span class="cov9" title="16">{
+                // Find the first project that has this dependency to determine if it's internal
+                isInternal := false
+                for _, projectDeps := range projectDeps </span><span class="cov10" title="19">{
+                        if dep, exists := projectDeps[depName]; exists </span><span class="cov9" title="16">{
+                                isInternal = dep.IsInternal
+                                break</span>
+                        }
+                }
+                <span class="cov9" title="16">depInfos = append(depInfos, depInfo{
+                        name:       depName,
+                        isInternal: isInternal,
+                })</span>
+        }
+
+        // Sort by type (internal first) and then alphabetically
+        <span class="cov6" title="7">sort.Slice(depInfos, func(i, j int) bool </span><span class="cov8" title="12">{
+                // First sort by type: internal dependencies come first
+                if depInfos[i].isInternal != depInfos[j].isInternal </span><span class="cov5" title="5">{
+                        return depInfos[i].isInternal
+                }</span>
+                // Then sort alphabetically
+                <span class="cov6" title="7">return depInfos[i].name &lt; depInfos[j].name</span>
+        })
+
+        // Extract sorted dependency names
+        <span class="cov6" title="7">var sortedDependencies []string
+        for _, depInfo := range depInfos </span><span class="cov9" title="16">{
+                sortedDependencies = append(sortedDependencies, depInfo.name)
+        }</span>
+
+        <span class="cov6" title="7">return sortedDependencies</span>
+}
+
+// createLanguageMatrix creates a matrix for a specific language
+func (g *Generator) createLanguageMatrix(languageProjects []*domain.Project) map[string]interface{} <span class="cov5" title="4">{
+        // Collect unique dependencies for this language
+        dependencySet := make(map[string]bool)
+        for _, project := range languageProjects </span><span class="cov5" title="4">{
+                for _, dep := range project.Dependencies </span><span class="cov7" title="8">{
+                        dependencySet[dep.Name] = true
+                }</span>
+        }
+
+        // Convert to slice for sorting
+        <span class="cov5" title="4">var dependencies []string
+        for depName := range dependencySet </span><span class="cov7" title="8">{
+                dependencies = append(dependencies, depName)
+        }</span>
+
+        // Create project dependency map for quick lookup
+        <span class="cov5" title="4">projectDeps := make(map[string]map[string]*domain.Dependency)
+        for _, project := range languageProjects </span><span class="cov5" title="4">{
+                projectDeps[project.ID] = make(map[string]*domain.Dependency)
+                for _, dep := range project.Dependencies </span><span class="cov7" title="8">{
+                        projectDeps[project.ID][dep.Name] = dep
+                }</span>
+        }
+
+        // Sort dependencies by type (internal first) and then alphabetically
+        <span class="cov5" title="4">dependencies = g.sortDependencies(dependencies, projectDeps)
+
+        // Create matrix data for this language
+        matrix := make([][]interface{}, len(languageProjects))
+        for i, project := range languageProjects </span><span class="cov5" title="4">{
+                matrix[i] = make([]interface{}, len(dependencies))
+                for j, depName := range dependencies </span><span class="cov7" title="8">{
+                        if dep, exists := projectDeps[project.ID][depName]; exists </span><span class="cov7" title="8">{
+                                matrix[i][j] = map[string]interface{}{
+                                        "version":     dep.Version,
+                                        "constraint":  dep.Constraint,
+                                        "is_internal": dep.IsInternal,
+                                        "ecosystem":   dep.Ecosystem,
+                                }
+                        }</span> else<span class="cov0" title="0"> {
+                                matrix[i][j] = nil
+                        }</span>
+                }
+        }
+
+        <span class="cov5" title="4">return map[string]interface{}{
+                "dependencies": dependencies,
+                "projects":     languageProjects,
+                "matrix":       matrix,
+        }</span>
+}
+
+// createCombinedMatrix creates a combined matrix for all projects
+func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]string, [][]interface{}) <span class="cov4" title="3">{
+        // Collect all unique dependencies across filtered projects
+        allDependencySet := make(map[string]bool)
+        for _, project := range projects </span><span class="cov5" title="4">{
+                for _, dep := range project.Dependencies </span><span class="cov7" title="8">{
+                        allDependencySet[dep.Name] = true
+                }</span>
+        }
+
+        <span class="cov4" title="3">var allDependencies []string
+        for depName := range allDependencySet </span><span class="cov7" title="8">{
+                allDependencies = append(allDependencies, depName)
+        }</span>
+
+        // Create project dependency map for quick lookup
+        <span class="cov4" title="3">allProjectDeps := make(map[string]map[string]*domain.Dependency)
+        for _, project := range projects </span><span class="cov5" title="4">{
+                allProjectDeps[project.ID] = make(map[string]*domain.Dependency)
+                for _, dep := range project.Dependencies </span><span class="cov7" title="8">{
+                        allProjectDeps[project.ID][dep.Name] = dep
+                }</span>
+        }
+
+        // Sort dependencies by type (internal first) and then alphabetically
+        <span class="cov4" title="3">allDependencies = g.sortDependencies(allDependencies, allProjectDeps)
+
+        // Create combined matrix data
+        combinedMatrix := make([][]interface{}, len(projects))
+        for i, project := range projects </span><span class="cov5" title="4">{
+                combinedMatrix[i] = make([]interface{}, len(allDependencies))
+                for j, depName := range allDependencies </span><span class="cov9" title="16">{
+                        if dep, exists := allProjectDeps[project.ID][depName]; exists </span><span class="cov7" title="8">{
+                                combinedMatrix[i][j] = map[string]interface{}{
+                                        "version":     dep.Version,
+                                        "constraint":  dep.Constraint,
+                                        "is_internal": dep.IsInternal,
+                                        "ecosystem":   dep.Ecosystem,
+                                }
+                        }</span> else<span class="cov7" title="8"> {
+                                combinedMatrix[i][j] = nil
+                        }</span>
+                }
+        }
+
+        <span class="cov4" title="3">return allDependencies, combinedMatrix</span>
+}
+
+// GenerateMatrix creates language-separated dependency matrices for easier template handling
+func (g *Generator) GenerateMatrix(ctx context.Context, projects []*domain.Project) map[string]interface{} <span class="cov4" title="3">{
+        // Filter out projects with zero dependencies
+        filteredProjects := g.filterProjectsWithDependencies(projects)
+
+        // Group projects by language
+        projectsByLanguage := g.groupProjectsByLanguage(filteredProjects)
+
+        // Create language-specific matrices
+        languageMatrices := make(map[string]map[string]interface{})
+        for language, languageProjects := range projectsByLanguage </span><span class="cov5" title="4">{
+                languageMatrices[language] = g.createLanguageMatrix(languageProjects)
+        }</span>
+
+        // Create combined matrix
+        <span class="cov4" title="3">allDependencies, combinedMatrix := g.createCombinedMatrix(filteredProjects)
+
+        // Create JSON string for language matrices
+        languageMatricesJSON, err := json.Marshal(languageMatrices)
+        if err != nil </span><span class="cov0" title="0">{
+                // Fallback to empty object if marshaling fails
+                languageMatricesJSON = []byte("{}")
+        }</span>
+
+        <span class="cov4" title="3">return map[string]interface{}{
+                "languages":     languageMatrices,
+                "languagesJSON": string(languageMatricesJSON),
+                "dependencies":  allDependencies,
+                "projects":      filteredProjects,
+                "matrix":        combinedMatrix,
+        }</span>
+}
+
+// GenerateHTML creates an HTML report from projects
+func (g *Generator) GenerateHTML(ctx context.Context, projects []*domain.Project) error <span class="cov3" title="2">{
+        // Create output directory if it doesn't exist
+        dir := filepath.Dir(g.outputPath)
+        if err := os.MkdirAll(dir, 0o750); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create output directory: %w", err)
+        }</span>
+
+        // Generate summary statistics
+        <span class="cov3" title="2">summary := g.GenerateSummary(ctx, projects)
+
+        // Generate matrix data
+        matrix := g.GenerateMatrix(ctx, projects)
+
+        // Create template data
+        data := struct {
+                Projects []*domain.Project
+                Summary  map[string]interface{}
+                Matrix   map[string]interface{}
+                Title    string
+        }{
+                Projects: projects,
+                Summary:  summary,
+                Matrix:   matrix,
+                Title:    "Dependency Matrix Report",
+        }
+
+        // Parse embedded template
+        tmpl, err := template.New("report").Parse(templateContent)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to parse template: %w", err)
+        }</span>
+
+        // Create output file
+        <span class="cov3" title="2">file, err := os.Create(g.outputPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create output file: %w", err)
+        }</span>
+        <span class="cov3" title="2">defer file.Close()
+
+        // Execute template
+        if err := tmpl.Execute(file, data); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to execute template: %w", err)
+        }</span>
+
+        <span class="cov3" title="2">return nil</span>
+}
+
+// GenerateCSV creates a CSV report from projects
+func (g *Generator) GenerateCSV(ctx context.Context, projects []*domain.Project) error <span class="cov5" title="4">{
+        // Create output directory if it doesn't exist
+        dir := filepath.Dir(g.outputPath)
+        if err := os.MkdirAll(dir, 0o750); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create output directory: %w", err)
+        }</span>
+
+        // Create output file
+        <span class="cov5" title="4">file, err := os.Create(g.outputPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create output file: %w", err)
+        }</span>
+        <span class="cov5" title="4">defer file.Close()
+
+        // Create CSV writer
+        writer := csv.NewWriter(file)
+        defer writer.Flush()
+
+        // Write CSV header
+        header := []string{
+                "Project ID",
+                "Project Name",
+                "Repository Name",
+                "Language",
+                "Dependency Name",
+                "Version",
+                "Constraint",
+                "Is Internal",
+                "Ecosystem",
+        }
+        if err := writer.Write(header); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write CSV header: %w", err)
+        }</span>
+
+        // Write project data
+        <span class="cov5" title="4">for _, project := range projects </span><span class="cov5" title="4">{
+                for _, dependency := range project.Dependencies </span><span class="cov7" title="8">{
+                        record := []string{
+                                project.ID,
+                                project.Name,
+                                project.Repository.Name,
+                                project.Language,
+                                dependency.Name,
+                                dependency.Version,
+                                dependency.Constraint,
+                                strconv.FormatBool(dependency.IsInternal),
+                                dependency.Ecosystem,
+                        }
+                        if err := writer.Write(record); err != nil </span><span class="cov0" title="0">{
+                                return fmt.Errorf("failed to write CSV record: %w", err)
+                        }</span>
+                }
+        }
+
+        <span class="cov5" title="4">return nil</span>
+}
+
+// GenerateJSON creates a JSON report from projects
+func (g *Generator) GenerateJSON(ctx context.Context, projects []*domain.Project) error <span class="cov3" title="2">{
+        // Create output directory if it doesn't exist
+        dir := filepath.Dir(g.outputPath)
+        if err := os.MkdirAll(dir, 0o750); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create output directory: %w", err)
+        }</span>
+
+        // Generate summary statistics
+        <span class="cov3" title="2">summary := g.GenerateSummary(ctx, projects)
+
+        // Create report data structure
+        reportData := struct {
+                Projects []*domain.Project      `json:"projects"`
+                Summary  map[string]interface{} `json:"summary"`
+                Title    string                 `json:"title"`
+        }{
+                Projects: projects,
+                Summary:  summary,
+                Title:    "Dependency Matrix Report",
+        }
+
+        // Create output file
+        file, err := os.Create(g.outputPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create output file: %w", err)
+        }</span>
+        <span class="cov3" title="2">defer file.Close()
+
+        // Create JSON encoder with indentation
+        encoder := json.NewEncoder(file)
+        encoder.SetIndent("", "  ")
+
+        // Encode data to JSON
+        if err := encoder.Encode(reportData); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to encode JSON: %w", err)
+        }</span>
+
+        <span class="cov3" title="2">return nil</span>
+}
+</pre>
+
+		<pre class="file" id="file4" style="display: none">package gitlab
+
+import (
+        "context"
+        "di-matrix-cli/internal/domain"
+        "encoding/base64"
+        "fmt"
+        "net/url"
+        "strings"
+        "sync"
+
+        gitlab "gitlab.com/gitlab-org/api/client-go"
+        "go.uber.org/zap"
+)
+
+// Client handles GitLab API operations
+type Client struct {
+        baseURL string
+        token   string
+        client  *gitlab.Client
+        logger  *zap.Logger
+}
+
+// NewClient creates a new GitLab client
+func NewClient(baseURL, token string, logger *zap.Logger) (*Client, error) <span class="cov3" title="6">{
+        client, err := gitlab.NewClient(token, gitlab.WithBaseURL(baseURL))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to create GitLab client: %w", err)
+        }</span>
+
+        <span class="cov3" title="6">return &amp;Client{
+                baseURL: baseURL,
+                token:   token,
+                client:  client,
+                logger:  logger,
+        }, nil</span>
+}
+
+// GetRepository retrieves a repository by URL or ID
+func (c *Client) GetRepository(ctx context.Context, identifier string) (*domain.Repository, error) <span class="cov2" title="3">{
+        c.logger.Debug("Starting GetRepository", zap.String("identifier", identifier))
+
+        // Extract project path from URL
+        projectPath, err := c.ExtractProjectPath(identifier)
+        if err != nil </span><span class="cov0" title="0">{
+                c.logger.Error("Failed to extract project path",
+                        zap.String("identifier", identifier),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to extract project path from URL %s: %w", identifier, err)
+        }</span>
+        <span class="cov2" title="3">c.logger.Debug("Extracted project path", zap.String("project_path", projectPath))
+
+        // Get project from GitLab API
+        c.logger.Debug("Calling GitLab API to get project", zap.String("project_path", projectPath))
+        project, _, err := c.client.Projects.GetProject(projectPath, nil, gitlab.WithContext(ctx))
+        if err != nil </span><span class="cov1" title="2">{
+                c.logger.Error("Failed to get project from API",
+                        zap.String("project_path", projectPath),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to get project %s: %w", projectPath, err)
+        }</span>
+        <span class="cov1" title="1">c.logger.Debug("Retrieved project from API",
+                zap.String("project_name", project.Name),
+                zap.Int("project_id", project.ID))
+
+        // Convert to domain.Repository
+        repo := &amp;domain.Repository{
+                ID:            project.ID,
+                Name:          project.Name,
+                URL:           project.WebURL,
+                DefaultBranch: project.DefaultBranch,
+                WebURL:        project.WebURL,
+        }
+
+        c.logger.Debug("Completed GetRepository", zap.String("project_name", repo.Name))
+
+        return repo, nil</span>
+}
+
+// CheckPermissions verifies if the token has sufficient permissions
+func (c *Client) CheckPermissions(ctx context.Context) error <span class="cov1" title="2">{
+        c.logger.Debug("Starting CheckPermissions")
+
+        // Try to get current user to verify token permissions
+        c.logger.Debug("Calling GitLab API to verify token permissions")
+        user, _, err := c.client.Users.CurrentUser(gitlab.WithContext(ctx))
+        if err != nil </span><span class="cov1" title="1">{
+                c.logger.Error("Failed to verify token permissions", zap.Error(err))
+                return fmt.Errorf("failed to verify token permissions: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">c.logger.Debug("Successfully verified token permissions",
+                zap.String("username", user.Username),
+                zap.Int("user_id", user.ID))
+
+        return nil</span>
+}
+
+// GetRepositoriesList returns a list of repositories from a group or project URL
+func (c *Client) GetRepositoriesList(ctx context.Context, repoURL string) ([]*domain.Repository, error) <span class="cov2" title="3">{
+        c.logger.Debug("Starting GetRepositoriesList", zap.String("repo_url", repoURL))
+
+        // Extract path from URL to determine if it's a group or project
+        path, err := c.ExtractProjectPath(repoURL)
+        if err != nil </span><span class="cov0" title="0">{
+                c.logger.Error("Failed to extract path from URL",
+                        zap.String("repo_url", repoURL),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to extract path from URL %s: %w", repoURL, err)
+        }</span>
+        <span class="cov2" title="3">c.logger.Debug("Extracted path from URL", zap.String("path", path))
+
+        // Check if it's a group by trying to get group info first
+        c.logger.Debug("Checking if path is a group", zap.String("path", path))
+        group, _, err := c.client.Groups.GetGroup(path, nil, gitlab.WithContext(ctx))
+        if err == nil </span><span class="cov1" title="1">{
+                c.logger.Debug("Path is a group, fetching group projects",
+                        zap.String("group_name", group.Name),
+                        zap.Int("group_id", group.ID))
+                // It's a group, get all projects in the group
+                return c.getGroupProjects(ctx, group.ID)
+        }</span>
+        <span class="cov1" title="2">c.logger.Debug("Path is not a group, trying as single project", zap.String("path", path))
+
+        // If not a group, try to get as a single project
+        c.logger.Debug("Calling GitLab API to get single project", zap.String("path", path))
+        project, _, err := c.client.Projects.GetProject(path, nil, gitlab.WithContext(ctx))
+        if err != nil </span><span class="cov1" title="1">{
+                c.logger.Error("Failed to get project or group",
+                        zap.String("path", path),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to get project or group %s: %w", path, err)
+        }</span>
+
+        <span class="cov1" title="1">c.logger.Debug("Retrieved single project",
+                zap.String("project_name", project.Name),
+                zap.Int("project_id", project.ID))
+
+        // Convert single project to repository list
+        repo := &amp;domain.Repository{
+                ID:            project.ID,
+                Name:          project.Name,
+                URL:           project.WebURL,
+                DefaultBranch: project.DefaultBranch,
+                WebURL:        project.WebURL,
+        }
+
+        c.logger.Debug("Completed GetRepositoriesList for single project",
+                zap.String("project_name", repo.Name))
+
+        return []*domain.Repository{repo}, nil</span>
+}
+
+// GetFilesList returns a list of file paths in the repository
+func (c *Client) GetFilesList(ctx context.Context, repoURL string) ([]string, error) <span class="cov1" title="2">{
+        c.logger.Debug("Starting GetFilesList", zap.String("repo_url", repoURL))
+
+        // Extract project path from URL
+        projectPath, err := c.ExtractProjectPath(repoURL)
+        if err != nil </span><span class="cov0" title="0">{
+                c.logger.Error("Failed to extract project path",
+                        zap.String("repo_url", repoURL),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to extract project path from URL %s: %w", repoURL, err)
+        }</span>
+        <span class="cov1" title="2">c.logger.Debug("Extracted project path", zap.String("project_path", projectPath))
+
+        // Get project to determine default branch
+        c.logger.Debug("Getting project info to determine default branch", zap.String("project_path", projectPath))
+        project, _, err := c.client.Projects.GetProject(projectPath, nil, gitlab.WithContext(ctx))
+        if err != nil </span><span class="cov1" title="1">{
+                c.logger.Error("Failed to get project",
+                        zap.String("project_path", projectPath),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to get project %s: %w", projectPath, err)
+        }</span>
+        <span class="cov1" title="1">c.logger.Debug("Retrieved project info",
+                zap.String("project_name", project.Name),
+                zap.String("default_branch", project.DefaultBranch))
+
+        // Get repository tree with pagination
+        c.logger.Debug("Starting repository tree traversal",
+                zap.String("project_path", projectPath),
+                zap.String("default_branch", project.DefaultBranch))
+
+        var allFiles []string
+        page := 1
+        perPage := 100
+
+        for </span><span class="cov4" title="14">{
+                c.logger.Debug("Fetching repository tree page",
+                        zap.String("project_path", projectPath),
+                        zap.Int("page", page),
+                        zap.Int("per_page", perPage))
+
+                tree, _, err := c.client.Repositories.ListTree(projectPath, &amp;gitlab.ListTreeOptions{
+                        Recursive: gitlab.Ptr(true),
+                        Ref:       gitlab.Ptr(project.DefaultBranch),
+                        ListOptions: gitlab.ListOptions{
+                                Page:    page,
+                                PerPage: perPage,
+                        },
+                }, gitlab.WithContext(ctx))
+                if err != nil </span><span class="cov0" title="0">{
+                        c.logger.Error("Failed to get repository tree",
+                                zap.String("project_path", projectPath),
+                                zap.Int("page", page),
+                                zap.Error(err))
+                        return nil, fmt.Errorf("failed to get repository tree for %s: %w", projectPath, err)
+                }</span>
+
+                // Extract file paths (exclude directories)
+                <span class="cov4" title="14">filesInPage := 0
+                for _, item := range tree </span><span class="cov10" title="1327">{
+                        if item.Type == "blob" </span><span class="cov9" title="1066">{ // blob = file, tree = directory
+                                allFiles = append(allFiles, item.Path)
+                                filesInPage++
+                        }</span>
+                }
+
+                <span class="cov4" title="14">c.logger.Debug("Processed repository tree page",
+                        zap.String("project_path", projectPath),
+                        zap.Int("page", page),
+                        zap.Int("total_items", len(tree)),
+                        zap.Int("files_in_page", filesInPage),
+                        zap.Int("total_files_so_far", len(allFiles)))
+
+                // If we got fewer items than requested, we've reached the end
+                if len(tree) &lt; perPage </span><span class="cov1" title="1">{
+                        c.logger.Debug("Reached end of repository tree",
+                                zap.String("project_path", projectPath),
+                                zap.Int("total_pages", page),
+                                zap.Int("total_files", len(allFiles)))
+                        break</span>
+                }
+
+                <span class="cov4" title="13">page++</span>
+        }
+
+        <span class="cov1" title="1">c.logger.Debug("Completed GetFilesList",
+                zap.String("project_path", projectPath),
+                zap.Int("total_files", len(allFiles)))
+
+        return allFiles, nil</span>
+}
+
+// GetFileContent returns the content of a specific file
+func (c *Client) GetFileContent(ctx context.Context, repoURL, filePath string) ([]byte, error) <span class="cov2" title="3">{
+        c.logger.Debug("Starting GetFileContent",
+                zap.String("repo_url", repoURL),
+                zap.String("file_path", filePath))
+
+        // Extract project path from URL
+        projectPath, err := c.ExtractProjectPath(repoURL)
+        if err != nil </span><span class="cov0" title="0">{
+                c.logger.Error("Failed to extract project path",
+                        zap.String("repo_url", repoURL),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to extract project path from URL %s: %w", repoURL, err)
+        }</span>
+        <span class="cov2" title="3">c.logger.Debug("Extracted project path", zap.String("project_path", projectPath))
+
+        // Get project to determine default branch
+        c.logger.Debug("Getting project info for file access", zap.String("project_path", projectPath))
+        project, _, err := c.client.Projects.GetProject(projectPath, nil, gitlab.WithContext(ctx))
+        if err != nil </span><span class="cov1" title="1">{
+                c.logger.Error("Failed to get project",
+                        zap.String("project_path", projectPath),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to get project %s: %w", projectPath, err)
+        }</span>
+        <span class="cov1" title="2">c.logger.Debug("Retrieved project info",
+                zap.String("project_name", project.Name),
+                zap.String("default_branch", project.DefaultBranch))
+
+        // Get file content
+        c.logger.Debug("Fetching file content",
+                zap.String("project_path", projectPath),
+                zap.String("file_path", filePath),
+                zap.String("ref", project.DefaultBranch))
+
+        file, _, err := c.client.RepositoryFiles.GetFile(projectPath, filePath, &amp;gitlab.GetFileOptions{
+                Ref: gitlab.Ptr(project.DefaultBranch),
+        }, gitlab.WithContext(ctx))
+        if err != nil </span><span class="cov1" title="1">{
+                c.logger.Error("Failed to get file content",
+                        zap.String("project_path", projectPath),
+                        zap.String("file_path", filePath),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to get file %s from project %s: %w", filePath, projectPath, err)
+        }</span>
+
+        <span class="cov1" title="1">c.logger.Debug("Retrieved file content",
+                zap.String("project_path", projectPath),
+                zap.String("file_path", filePath),
+                zap.String("file_encoding", file.Encoding),
+                zap.Int("content_size_bytes", len(file.Content)))
+
+        // Decode base64 content
+        c.logger.Debug("Decoding base64 content",
+                zap.String("file_path", filePath),
+                zap.String("encoding", file.Encoding))
+
+        content, err := base64.StdEncoding.DecodeString(file.Content)
+        if err != nil </span><span class="cov0" title="0">{
+                c.logger.Error("Failed to decode file content",
+                        zap.String("file_path", filePath),
+                        zap.String("encoding", file.Encoding),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to decode file content for %s: %w", filePath, err)
+        }</span>
+
+        <span class="cov1" title="1">c.logger.Debug("Completed GetFileContent",
+                zap.String("file_path", filePath),
+                zap.Int("decoded_content_size_bytes", len(content)))
+
+        return content, nil</span>
+}
+
+// getGroupProjects retrieves all projects within a group and its subgroups using concurrent pagination
+func (c *Client) getGroupProjects(ctx context.Context, groupID int) ([]*domain.Repository, error) <span class="cov1" title="1">{
+        c.logger.Debug("Starting getGroupProjects", zap.Int("group_id", groupID))
+
+        // First, get the first page to determine total pages
+        perPage := 100
+        c.logger.Debug("Fetching first page to determine pagination",
+                zap.Int("group_id", groupID),
+                zap.Int("per_page", perPage))
+
+        firstPage, resp, err := c.client.Groups.ListGroupProjects(groupID, &amp;gitlab.ListGroupProjectsOptions{
+                ListOptions: gitlab.ListOptions{
+                        Page:    1,
+                        PerPage: perPage,
+                },
+                IncludeSubGroups: gitlab.Ptr(true),
+        }, gitlab.WithContext(ctx))
+        if err != nil </span><span class="cov0" title="0">{
+                c.logger.Error("Failed to get first page of projects",
+                        zap.Int("group_id", groupID),
+                        zap.Error(err))
+                return nil, fmt.Errorf("failed to get first page of projects for group %d: %w", groupID, err)
+        }</span>
+
+        <span class="cov1" title="1">c.logger.Debug("Retrieved first page",
+                zap.Int("group_id", groupID),
+                zap.Int("projects_in_first_page", len(firstPage)),
+                zap.Int("total_projects", resp.TotalItems),
+                zap.Int("total_pages", resp.TotalPages))
+
+        // If we got fewer projects than requested, we only have one page
+        if len(firstPage) &lt; perPage </span><span class="cov1" title="1">{
+                c.logger.Debug("Single page detected, returning results",
+                        zap.Int("group_id", groupID),
+                        zap.Int("total_projects", len(firstPage)))
+                return c.ConvertProjectsToRepositories(firstPage), nil
+        }</span>
+
+        // Calculate total pages from response headers
+        <span class="cov0" title="0">totalPages := resp.TotalPages
+        if totalPages &lt;= 1 </span><span class="cov0" title="0">{
+                c.logger.Debug("Only one page total, returning results",
+                        zap.Int("group_id", groupID),
+                        zap.Int("total_projects", len(firstPage)))
+                return c.ConvertProjectsToRepositories(firstPage), nil
+        }</span>
+
+        <span class="cov0" title="0">c.logger.Debug("Multi-page group detected, starting concurrent fetch",
+                zap.Int("group_id", groupID),
+                zap.Int("total_pages", totalPages),
+                zap.Int("per_page", perPage),
+                zap.Int("total_projects", resp.TotalItems))
+
+        // Use worker pool pattern for concurrent pagination
+        const maxWorkers = 5                     // Limit concurrent requests to avoid overwhelming the API
+        pageChan := make(chan int, totalPages-1) // Channel for page numbers (skip page 1, already fetched)
+        resultChan := make(chan []*domain.Repository, totalPages-1)
+        errorChan := make(chan error, totalPages-1)
+
+        // Send page numbers to workers (skip page 1)
+        for page := 2; page &lt;= totalPages; page++ </span><span class="cov0" title="0">{
+                pageChan &lt;- page
+        }</span>
+        <span class="cov0" title="0">close(pageChan)
+
+        // Start workers
+        c.logger.Debug("Starting worker pool",
+                zap.Int("group_id", groupID),
+                zap.Int("max_workers", maxWorkers),
+                zap.Int("pages_to_fetch", totalPages-1))
+
+        var wg sync.WaitGroup
+        for i := 0; i &lt; maxWorkers; i++ </span><span class="cov0" title="0">{
+                wg.Add(1)
+                go func(workerID int) </span><span class="cov0" title="0">{
+                        defer wg.Done()
+                        c.logger.Debug("Started project worker",
+                                zap.Int("group_id", groupID),
+                                zap.Int("worker_id", workerID))
+
+                        for page := range pageChan </span><span class="cov0" title="0">{
+                                c.logger.Debug("Worker processing page",
+                                        zap.Int("group_id", groupID),
+                                        zap.Int("worker_id", workerID),
+                                        zap.Int("page", page))
+
+                                select </span>{
+                                case &lt;-ctx.Done():<span class="cov0" title="0">
+                                        c.logger.Debug("Worker cancelled due to context",
+                                                zap.Int("group_id", groupID),
+                                                zap.Int("worker_id", workerID),
+                                                zap.Int("page", page))
+                                        errorChan &lt;- ctx.Err()
+                                        return</span>
+                                default:<span class="cov0" title="0">
+                                        projects, _, err := c.client.Groups.ListGroupProjects(groupID, &amp;gitlab.ListGroupProjectsOptions{
+                                                ListOptions: gitlab.ListOptions{
+                                                        Page:    page,
+                                                        PerPage: perPage,
+                                                },
+                                                IncludeSubGroups: gitlab.Ptr(true),
+                                        }, gitlab.WithContext(ctx))
+                                        if err != nil </span><span class="cov0" title="0">{
+                                                c.logger.Error("Worker failed to get page",
+                                                        zap.Int("group_id", groupID),
+                                                        zap.Int("worker_id", workerID),
+                                                        zap.Int("page", page),
+                                                        zap.Error(err))
+                                                errorChan &lt;- fmt.Errorf("failed to get page %d for group %d: %w", page, groupID, err)
+                                                return
+                                        }</span>
+
+                                        <span class="cov0" title="0">c.logger.Debug("Worker completed page",
+                                                zap.Int("group_id", groupID),
+                                                zap.Int("worker_id", workerID),
+                                                zap.Int("page", page),
+                                                zap.Int("projects_count", len(projects)))
+
+                                        resultChan &lt;- c.ConvertProjectsToRepositories(projects)</span>
+                                }
+                        }
+
+                        <span class="cov0" title="0">c.logger.Debug("Worker finished",
+                                zap.Int("group_id", groupID),
+                                zap.Int("worker_id", workerID))</span>
+                }(i)
+        }
+
+        // Wait for all workers to complete
+        <span class="cov0" title="0">go func() </span><span class="cov0" title="0">{
+                wg.Wait()
+                close(resultChan)
+                close(errorChan)
+        }</span>()
+
+        // Collect results
+        <span class="cov0" title="0">c.logger.Debug("Starting result collection",
+                zap.Int("group_id", groupID),
+                zap.Int("expected_results", totalPages-1))
+
+        var allRepos []*domain.Repository
+        allRepos = append(allRepos, c.ConvertProjectsToRepositories(firstPage)...) // Add first page results
+
+        c.logger.Debug("Added first page results",
+                zap.Int("group_id", groupID),
+                zap.Int("first_page_repos", len(firstPage)),
+                zap.Int("total_repos_so_far", len(allRepos)))
+
+        // Collect results from workers
+        collectedPages := 0
+        for i := 0; i &lt; totalPages-1; i++ </span><span class="cov0" title="0">{
+                select </span>{
+                case &lt;-ctx.Done():<span class="cov0" title="0">
+                        c.logger.Debug("Result collection cancelled",
+                                zap.Int("group_id", groupID),
+                                zap.Int("collected_pages", collectedPages))
+                        return nil, ctx.Err()</span>
+                case err := &lt;-errorChan:<span class="cov0" title="0">
+                        c.logger.Error("Error during result collection",
+                                zap.Int("group_id", groupID),
+                                zap.Int("collected_pages", collectedPages),
+                                zap.Error(err))
+                        return nil, err</span>
+                case repos := &lt;-resultChan:<span class="cov0" title="0">
+                        collectedPages++
+                        allRepos = append(allRepos, repos...)
+                        c.logger.Debug("Collected page results",
+                                zap.Int("group_id", groupID),
+                                zap.Int("page_number", collectedPages+1), // +1 because we start from page 2
+                                zap.Int("repos_in_page", len(repos)),
+                                zap.Int("total_repos_so_far", len(allRepos)))</span>
+                }
+        }
+
+        <span class="cov0" title="0">c.logger.Debug("Completed concurrent project fetch",
+                zap.Int("group_id", groupID),
+                zap.Int("total_pages_processed", totalPages),
+                zap.Int("total_repositories", len(allRepos)))
+
+        return allRepos, nil</span>
+}
+
+// ConvertProjectsToRepositories converts GitLab projects to domain repositories
+func (c *Client) ConvertProjectsToRepositories(projects []*gitlab.Project) []*domain.Repository <span class="cov1" title="2">{
+        repos := make([]*domain.Repository, 0, len(projects))
+        for _, project := range projects </span><span class="cov2" title="4">{
+                repos = append(repos, &amp;domain.Repository{
+                        ID:            project.ID,
+                        Name:          project.Name,
+                        URL:           project.WebURL,
+                        DefaultBranch: project.DefaultBranch,
+                        WebURL:        project.WebURL,
+                })
+        }</span>
+        <span class="cov1" title="2">return repos</span>
+}
+
+// ExtractProjectPath extracts the project path from a GitLab URL
+func (c *Client) ExtractProjectPath(gitlabURL string) (string, error) <span class="cov4" title="19">{
+        // Parse the URL
+        parsedURL, err := url.Parse(gitlabURL)
+        if err != nil </span><span class="cov1" title="1">{
+                return "", err
+        }</span>
+
+        // Extract path segments after the base URL and remove trailing slash
+        <span class="cov4" title="18">path := strings.TrimPrefix(parsedURL.Path, "/")
+        path = strings.TrimSuffix(path, "/")
+        if path == "" </span><span class="cov1" title="1">{
+                return "", fmt.Errorf("no path found in URL: %s", gitlabURL)
+        }</span>
+
+        // Decode the path to handle any existing URL encoding
+        // This prevents double-encoding when the GitLab API client encodes it again
+        <span class="cov4" title="17">decodedPath, err := url.PathUnescape(path)
+        if err != nil </span><span class="cov0" title="0">{
+                // If decoding fails, use the original path
+                decodedPath = path
+        }</span>
+
+        <span class="cov4" title="17">return decodedPath, nil</span>
+}
+</pre>
+
+		<pre class="file" id="file5" style="display: none">package logger
+
+import (
+        "os"
+        "sync"
+
+        "go.uber.org/zap"
+        "go.uber.org/zap/zapcore"
+)
+
+type Logger struct {
+        atomicLevel zap.AtomicLevel
+        logger      *zap.Logger
+        mu          sync.RWMutex
+}
+
+var (
+        instance *Logger   //nolint:gochecknoglobals // Singleton pattern for logger
+        once     sync.Once //nolint:gochecknoglobals // Singleton pattern for logger
+)
+
+func GetLogger() *zap.Logger <span class="cov10" title="17">{
+        once.Do(func() </span><span class="cov1" title="1">{
+                instance = &amp;Logger{
+                        atomicLevel: zap.NewAtomicLevelAt(zap.InfoLevel),
+                }
+
+                encoderCfg := zap.NewDevelopmentEncoderConfig()
+                encoderCfg.TimeKey = "timestamp"
+                encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout("15:04:05.000") // HH:MM:SS.mmm format
+                encoderCfg.CallerKey = ""                                           // remove caller
+                encoderCfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+                core := zapcore.NewCore(
+                        zapcore.NewConsoleEncoder(encoderCfg),
+                        zapcore.AddSync(os.Stdout),
+                        instance.atomicLevel,
+                )
+
+                instance.logger = zap.New(core)
+        }</span>)
+
+        <span class="cov10" title="17">instance.mu.RLock()
+        defer instance.mu.RUnlock()
+        return instance.logger</span>
+}
+
+func SetLevel(level zapcore.Level) <span class="cov6" title="6">{
+        once.Do(func() </span><span class="cov0" title="0">{
+                instance = &amp;Logger{
+                        atomicLevel: zap.NewAtomicLevelAt(zap.InfoLevel),
+                }
+        }</span>)
+
+        <span class="cov6" title="6">instance.mu.Lock()
+        defer instance.mu.Unlock()
+        instance.atomicLevel.SetLevel(level)</span>
+}
+</pre>
+
+		<pre class="file" id="file6" style="display: none">package parser
+
+import (
+        "bytes"
+        "context"
+        "di-matrix-cli/internal/domain"
+        "fmt"
+        "strings"
+
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/golang/mod"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/java/pom"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/nodejs/npm"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/nodejs/packagejson"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/nodejs/yarn"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/python/pip"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/python/pipenv"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/python/poetry"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/python/pyproject"
+        "github.com/aquasecurity/trivy/pkg/dependency/parser/python/uv"
+        ftypes "github.com/aquasecurity/trivy/pkg/fanal/types"
+        xio "github.com/aquasecurity/trivy/pkg/x/io"
+)
+
+// Parser handles dependency file parsing using Trivy
+type Parser struct{}
+
+// NewParser creates a new dependency parser
+func NewParser() *Parser <span class="cov5" title="8">{
+        return &amp;Parser{}
+}</span>
+
+// ParseFile parses a dependency file and extracts dependencies
+func (p *Parser) ParseFile(ctx context.Context, file *domain.DependencyFile) ([]*domain.Dependency, error) <span class="cov4" title="7">{
+        // Create a reader from the file content
+        reader, err := xio.NewReadSeekerAt(bytes.NewReader(file.Content))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to create reader: %w", err)
+        }</span>
+
+        <span class="cov4" title="7">var trivyPackages []ftypes.Package
+        var trivyDeps []ftypes.Dependency
+
+        switch file.Language </span>{
+        case "go":<span class="cov2" title="2">
+                trivyPackages, trivyDeps, err = p.parseGoFileWithTrivy(reader, file.Path)</span>
+        case "nodejs":<span class="cov2" title="2">
+                trivyPackages, trivyDeps, err = p.parseNodeJSFileWithTrivy(reader, file.Path)</span>
+        case "java":<span class="cov1" title="1">
+                trivyPackages, trivyDeps, err = p.parseJavaFileWithTrivy(reader, file.Path)</span>
+        case "python":<span class="cov1" title="1">
+                trivyPackages, trivyDeps, err = p.parsePythonFileWithTrivy(reader, file.Path)</span>
+        default:<span class="cov1" title="1">
+                return nil, fmt.Errorf("unsupported language: %s", file.Language)</span>
+        }
+
+        <span class="cov4" title="6">if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to parse %s file %s: %w", file.Language, file.Path, err)
+        }</span>
+
+        // Convert Trivy packages to domain dependencies
+        <span class="cov4" title="6">var dependencies []*domain.Dependency
+        for i := range trivyPackages </span><span class="cov6" title="13">{
+                pkg := &amp;trivyPackages[i]
+                dependencies = append(dependencies, &amp;domain.Dependency{
+                        Name:       pkg.Name,
+                        Version:    pkg.Version,
+                        Constraint: p.extractConstraint(pkg),
+                        MinVersion: p.extractMinVersion(pkg),
+                        MaxVersion: p.extractMaxVersion(pkg),
+                        IsInternal: p.isInternalDependency(pkg.Name),
+                        Ecosystem:  p.getEcosystem(file.Language),
+                })
+        }</span>
+
+        // Log dependencies for debugging (we don't use them in the domain model yet)
+        <span class="cov4" title="6">_ = trivyDeps
+
+        return dependencies, nil</span>
+}
+
+// CanParse checks if this parser can handle the given file type
+func (p *Parser) CanParse(filePath string) bool <span class="cov6" title="14">{
+        fileName := p.getFileName(filePath)
+
+        supportedFiles := map[string][]string{
+                "go":     {"go.mod", "go.sum"},
+                "nodejs": {"package.json", "package-lock.json", "yarn.lock"},
+                "java":   {"pom.xml"},
+                "python": {"requirements.txt", "Pipfile", "poetry.lock", "uv.lock", "pyproject.toml"},
+        }
+
+        for _, files := range supportedFiles </span><span class="cov8" title="34">{
+                for _, file := range files </span><span class="cov10" title="83">{
+                        if fileName == file </span><span class="cov5" title="11">{
+                                return true
+                        }</span>
+                }
+        }
+        <span class="cov3" title="3">return false</span>
+}
+
+// parseGoFileWithTrivy parses Go dependencies using Trivy's Go parser
+func (p *Parser) parseGoFileWithTrivy(
+        reader xio.ReadSeekerAt,
+        fileName string,
+) ([]ftypes.Package, []ftypes.Dependency, error) <span class="cov2" title="2">{
+        fileName = p.getFileName(fileName)
+
+        switch fileName </span>{
+        case "go.mod":<span class="cov2" title="2">
+                parser := mod.NewParser(false, false)
+                packages, deps, err := parser.Parse(reader)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, fmt.Errorf("go.mod parser error: %w", err)
+                }</span>
+                <span class="cov2" title="2">return packages, deps, nil</span>
+        case "go.sum":<span class="cov0" title="0">
+                // go.sum files don't contain dependency information, they contain checksums
+                // Return empty results instead of an error
+                return []ftypes.Package{}, []ftypes.Dependency{}, nil</span>
+        default:<span class="cov0" title="0">
+                return nil, nil, fmt.Errorf("unsupported Go file: %s", fileName)</span>
+        }
+}
+
+// parseNodeJSFileWithTrivy parses Node.js dependencies using Trivy's Node.js parsers
+func (p *Parser) parseNodeJSFileWithTrivy(
+        reader xio.ReadSeekerAt,
+        fileName string,
+) ([]ftypes.Package, []ftypes.Dependency, error) <span class="cov2" title="2">{
+        fileName = p.getFileName(fileName)
+
+        switch fileName </span>{
+        case "package-lock.json":<span class="cov1" title="1">
+                // package-lock.json is more important - contains exact versions of all dependencies
+                parser := npm.NewParser()
+                return parser.Parse(reader)</span>
+        case "package.json":<span class="cov1" title="1">
+                // Use Trivy's package.json parser
+                parser := packagejson.NewParser()
+                pkg, err := parser.Parse(reader)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+                // Trivy's packagejson parser returns a single package
+                // The dependencies are stored in the Package's dependencies field
+                <span class="cov1" title="1">var packages []ftypes.Package
+                if pkg.Name != "" </span><span class="cov1" title="1">{
+                        packages = append(packages, pkg.Package)
+                }</span>
+                <span class="cov1" title="1">return packages, nil, nil</span>
+        case "yarn.lock":<span class="cov0" title="0">
+                parser := yarn.NewParser()
+                packages, deps, _, err := parser.Parse(reader)
+                return packages, deps, err</span>
+        default:<span class="cov0" title="0">
+                return nil, nil, fmt.Errorf("unsupported Node.js file: %s", fileName)</span>
+        }
+}
+
+// parseJavaFileWithTrivy parses Java dependencies using Trivy's Java parser
+func (p *Parser) parseJavaFileWithTrivy(
+        reader xio.ReadSeekerAt,
+        fileName string,
+) ([]ftypes.Package, []ftypes.Dependency, error) <span class="cov1" title="1">{
+        fileName = p.getFileName(fileName)
+
+        if fileName == "pom.xml" </span><span class="cov1" title="1">{
+                parser := pom.NewParser("") // Use default options
+                return parser.Parse(reader)
+        }</span>
+        <span class="cov0" title="0">return nil, nil, fmt.Errorf("unsupported Java file: %s", fileName)</span>
+}
+
+// parsePythonFileWithTrivy parses Python dependencies using Trivy's Python parsers
+func (p *Parser) parsePythonFileWithTrivy(
+        reader xio.ReadSeekerAt,
+        fileName string,
+) ([]ftypes.Package, []ftypes.Dependency, error) <span class="cov1" title="1">{
+        fileName = p.getFileName(fileName)
+
+        switch fileName </span>{
+        case "requirements.txt":<span class="cov1" title="1">
+                parser := pip.NewParser(false)
+                return parser.Parse(reader)</span>
+        case "Pipfile":<span class="cov0" title="0">
+                parser := pipenv.NewParser()
+                return parser.Parse(reader)</span>
+        case "poetry.lock":<span class="cov0" title="0">
+                parser := poetry.NewParser()
+                return parser.Parse(reader)</span>
+        case "uv.lock":<span class="cov0" title="0">
+                parser := uv.NewParser()
+                return parser.Parse(reader)</span>
+        case "pyproject.toml":<span class="cov0" title="0">
+                // For pyproject.toml, we need to handle it differently since it doesn't return packages directly
+                // We'll parse it to get dependency names but won't have versions
+                parser := pyproject.NewParser()
+                pyprojectData, err := parser.Parse(reader)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, nil, err
+                }</span>
+
+                // Convert pyproject.toml dependencies to packages (without versions)
+                <span class="cov0" title="0">var packages []ftypes.Package
+                mainDeps := pyprojectData.MainDeps()
+                for _, depName := range mainDeps.Items() </span><span class="cov0" title="0">{
+                        packages = append(packages, ftypes.Package{
+                                Name:    depName,
+                                Version: "", // pyproject.toml doesn't contain exact versions
+                        })
+                }</span>
+
+                <span class="cov0" title="0">return packages, nil, nil</span>
+        default:<span class="cov0" title="0">
+                return nil, nil, fmt.Errorf("unsupported Python file: %s", fileName)</span>
+        }
+}
+
+// Helper methods
+
+func (p *Parser) getFileName(filePath string) string <span class="cov7" title="20">{
+        parts := strings.Split(filePath, "/")
+        return parts[len(parts)-1]
+}</span>
+
+func (p *Parser) extractConstraint(pkg *ftypes.Package) string <span class="cov6" title="13">{
+        // For now, use version as constraint
+        // In a more sophisticated implementation, we could parse the original constraint
+        return pkg.Version
+}</span>
+
+func (p *Parser) extractMinVersion(pkg *ftypes.Package) string <span class="cov6" title="13">{
+        // For now, use version as min version
+        // In a more sophisticated implementation, we could parse version ranges
+        return pkg.Version
+}</span>
+
+func (p *Parser) extractMaxVersion(pkg *ftypes.Package) string <span class="cov6" title="13">{
+        // For now, return empty
+        // In a more sophisticated implementation, we could parse version ranges
+        return ""
+}</span>
+
+func (p *Parser) isInternalDependency(name string) bool <span class="cov6" title="13">{
+        // For now, consider everything external
+        // In a more sophisticated implementation, we could check against internal domains
+        return false
+}</span>
+
+func (p *Parser) getEcosystem(language string) string <span class="cov6" title="13">{
+        switch language </span>{
+        case "go":<span class="cov4" title="6">
+                return "go-modules"</span>
+        case "nodejs":<span class="cov3" title="3">
+                return "npm"</span>
+        case "java":<span class="cov3" title="3">
+                return "maven"</span>
+        case "python":<span class="cov1" title="1">
+                return "pip"</span>
+        default:<span class="cov0" title="0">
+                return language</span>
+        }
+}
+</pre>
+
+		<pre class="file" id="file7" style="display: none">package scanner
+
+import (
+        "context"
+        "di-matrix-cli/internal/domain"
+        "fmt"
+        "path/filepath"
+        "strings"
+        "time"
+        "unicode"
+
+        "go.uber.org/zap"
+)
+
+// Scanner finds dependency files in repositories and detects projects
+type Scanner struct {
+        gitlabClient domain.GitlabClient
+        logger       *zap.Logger
+}
+
+// NewScanner creates a new file scanner
+func NewScanner(gitlabClient domain.GitlabClient, logger *zap.Logger) *Scanner <span class="cov5" title="6">{
+        return &amp;Scanner{
+                gitlabClient: gitlabClient,
+                logger:       logger,
+        }
+}</span>
+
+// CapitalizeFirst capitalizes the first letter of a string
+func CapitalizeFirst(s string) string <span class="cov8" title="24">{
+        if s == "" </span><span class="cov1" title="1">{
+                return s
+        }</span>
+        <span class="cov8" title="23">r := []rune(s)
+        r[0] = unicode.ToUpper(r[0])
+        return string(r)</span>
+}
+
+// DetectProjects detects projects within a repository by analyzing dependency files
+func (s *Scanner) DetectProjects(ctx context.Context, repo *domain.Repository) ([]*domain.Project, error) <span class="cov4" title="5">{
+        s.logger.Info("Detecting projects in repository",
+                zap.String("repo_name", repo.Name),
+                zap.String("repo_url", repo.URL))
+
+        // Get all files in the repository
+        files, err := s.gitlabClient.GetFilesList(ctx, repo.URL)
+        if err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("failed to get files list for repository %s: %w", repo.Name, err)
+        }</span>
+
+        // Filter for dependency files
+        <span class="cov4" title="4">dependencyFiles := s.filterDependencyFiles(files)
+        if len(dependencyFiles) == 0 </span><span class="cov1" title="1">{
+                s.logger.Info("No dependency files found in repository", zap.String("repo_name", repo.Name))
+                return []*domain.Project{}, nil
+        }</span>
+
+        // Group dependency files by project (language + path)
+        <span class="cov3" title="3">projectGroups := s.groupDependencyFilesByProject(dependencyFiles)
+
+        // Create projects from groups
+        var projects []*domain.Project
+        for _, group := range projectGroups </span><span class="cov6" title="9">{
+                project, err := s.createProjectFromGroup(ctx, repo, group)
+                if err != nil </span><span class="cov0" title="0">{
+                        s.logger.Error("Failed to create project from group",
+                                zap.String("repo_name", repo.Name),
+                                zap.Error(err))
+                        continue</span>
+                }
+                // Only add projects that have at least one dependency file
+                <span class="cov6" title="9">if len(project.DependencyFiles) &gt; 0 </span><span class="cov5" title="8">{
+                        projects = append(projects, project)
+                }</span>
+        }
+
+        <span class="cov3" title="3">s.logger.Info("Detected projects in repository",
+                zap.String("repo_name", repo.Name),
+                zap.Int("project_count", len(projects)))
+
+        return projects, nil</span>
+}
+
+// filterDependencyFiles filters the file list to only include dependency files
+func (s *Scanner) filterDependencyFiles(files []string) []string <span class="cov4" title="4">{
+        var dependencyFiles []string
+        supportedTypes := s.SupportedFileTypes()
+
+        // Create a map for O(1) lookup instead of nested loops
+        supportedMap := make(map[string]bool)
+        for _, fileType := range supportedTypes </span><span class="cov10" title="52">{
+                supportedMap[fileType] = true
+        }</span>
+
+        <span class="cov4" title="4">for _, file := range files </span><span class="cov7" title="17">{
+                fileName := filepath.Base(file)
+                if supportedMap[fileName] </span><span class="cov6" title="10">{
+                        dependencyFiles = append(dependencyFiles, file)
+                }</span>
+        }
+
+        <span class="cov4" title="4">return dependencyFiles</span>
+}
+
+// dependencyFileGroup represents a group of dependency files that belong to the same project
+type dependencyFileGroup struct {
+        language string
+        path     string
+        files    []string
+}
+
+// groupDependencyFilesByProject groups dependency files by their project (language + path)
+func (s *Scanner) groupDependencyFilesByProject(dependencyFiles []string) []dependencyFileGroup <span class="cov3" title="3">{
+        projectMap := make(map[string]*dependencyFileGroup)
+
+        for _, file := range dependencyFiles </span><span class="cov6" title="10">{
+                language := s.DetectLanguageFromFile(file)
+                projectPath := s.ExtractProjectPath(file)
+                groupKey := fmt.Sprintf("%s:%s", language, projectPath)
+
+                if group, exists := projectMap[groupKey]; exists </span><span class="cov1" title="1">{
+                        group.files = append(group.files, file)
+                }</span> else<span class="cov6" title="9"> {
+                        projectMap[groupKey] = &amp;dependencyFileGroup{
+                                language: language,
+                                path:     projectPath,
+                                files:    []string{file},
+                        }
+                }</span>
+        }
+
+        // Convert map to slice
+        <span class="cov3" title="3">var groups []dependencyFileGroup
+        for _, group := range projectMap </span><span class="cov6" title="9">{
+                groups = append(groups, *group)
+        }</span>
+
+        <span class="cov3" title="3">return groups</span>
+}
+
+// DetectLanguageFromFile detects the programming language from a dependency file
+func (s *Scanner) DetectLanguageFromFile(filePath string) string <span class="cov8" title="26">{
+        fileName := strings.ToLower(filepath.Base(filePath))
+
+        switch fileName </span>{
+        case "go.mod", "go.sum":<span class="cov5" title="6">
+                return "go"</span>
+        case "package.json", "package-lock.json", "yarn.lock":<span class="cov5" title="7">
+                return "nodejs"</span>
+        case "pom.xml", "build.gradle", "gradle.lockfile":<span class="cov3" title="3">
+                return "java"</span>
+        case "requirements.txt", "pipfile", "poetry.lock", "uv.lock", "setup.py":<span class="cov5" title="8">
+                return "python"</span>
+        default:<span class="cov2" title="2">
+                return "unknown"</span>
+        }
+}
+
+// ExtractProjectPath extracts the project path from a file path
+func (s *Scanner) ExtractProjectPath(filePath string) string <span class="cov7" title="17">{
+        // Remove the dependency file name to get the directory path
+        dir := filepath.Dir(filePath)
+
+        // If it's in the root directory, return empty string
+        if dir == "." || dir == "/" </span><span class="cov5" title="6">{
+                return ""
+        }</span>
+
+        <span class="cov6" title="11">return dir</span>
+}
+
+// createProjectFromGroup creates a Project from a dependency file group
+func (s *Scanner) createProjectFromGroup(
+        ctx context.Context,
+        repo *domain.Repository,
+        group dependencyFileGroup,
+) (*domain.Project, error) <span class="cov6" title="9">{
+        // Generate project ID
+        projectID := fmt.Sprintf("repo-%d-%s-%s", repo.ID, group.path, group.language)
+        if group.path == "" </span><span class="cov3" title="3">{
+                projectID = fmt.Sprintf("repo-%d-root-%s", repo.ID, group.language)
+        }</span>
+
+        // Generate project name
+        <span class="cov6" title="9">projectName := fmt.Sprintf("%s %s", repo.Name, CapitalizeFirst(group.language))
+        if group.path != "" </span><span class="cov5" title="6">{
+                projectName = fmt.Sprintf("%s %s (%s)", repo.Name, CapitalizeFirst(group.language), group.path)
+        }</span>
+
+        // Create dependency files with content
+        <span class="cov6" title="9">var dependencyFiles []*domain.DependencyFile
+        for _, file := range group.files </span><span class="cov6" title="10">{
+                content, err := s.gitlabClient.GetFileContent(ctx, repo.URL, file)
+                if err != nil </span><span class="cov1" title="1">{
+                        s.logger.Error("Failed to get file content",
+                                zap.String("file", file),
+                                zap.Error(err))
+                        continue</span>
+                }
+
+                <span class="cov6" title="9">dependencyFiles = append(dependencyFiles, &amp;domain.DependencyFile{
+                        Path:         file,
+                        Language:     group.language,
+                        Content:      content,
+                        LastModified: time.Now(), // TODO: Get actual last modified time from GitLab API
+                })</span>
+        }
+
+        <span class="cov6" title="9">project := &amp;domain.Project{
+                ID:              projectID,
+                Name:            projectName,
+                Repository:      *repo,
+                Path:            group.path,
+                Language:        group.language,
+                DependencyFiles: dependencyFiles,
+                Dependencies:    []*domain.Dependency{}, // Will be populated by parser
+        }
+
+        return project, nil</span>
+}
+
+// SupportedFileTypes returns the file types we can scan for
+func (s *Scanner) SupportedFileTypes() []string <span class="cov4" title="5">{
+        return []string{
+                "go.mod", "go.sum",
+                "package.json", "package-lock.json", "yarn.lock",
+                "pom.xml", "build.gradle", "gradle.lockfile",
+                "requirements.txt", "Pipfile", "poetry.lock", "uv.lock", "setup.py",
+        }
+}</span>
+</pre>
+
+		<pre class="file" id="file8" style="display: none">package usecases
+
+import (
+        "context"
+        "di-matrix-cli/internal/domain"
+        "sync"
+
+        "go.uber.org/zap"
+)
+
+const (
+        // Default number of workers for concurrent project processing
+        defaultProjectWorkers = 5
+        // Default number of workers for concurrent dependency file processing per project
+        defaultDependencyFileWorkers = 3
+)
+
+// AnalyzeResponse represents the result of the analysis
+type AnalyzeResponse struct {
+        TotalProjects     int `json:"total_projects"`
+        TotalDependencies int `json:"total_dependencies"`
+        InternalCount     int `json:"internal_count"`
+        ExternalCount     int `json:"external_count"`
+}
+
+// AnalyzeUseCase orchestrates the dependency analysis workflow
+type AnalyzeUseCase struct {
+        gitlabClient domain.GitlabClient
+        scanner      domain.RepositoryScanner
+        parser       domain.DependencyParser
+        classifier   domain.DependencyClassifier
+        generator    domain.ReportGenerator
+        logger       *zap.Logger
+        ctx          context.Context
+}
+
+// NewAnalyzeUseCase creates a new analyze use case with dependency injection
+func NewAnalyzeUseCase(
+        ctx context.Context,
+        gitlabClient domain.GitlabClient,
+        scanner domain.RepositoryScanner,
+        parser domain.DependencyParser,
+        classifier domain.DependencyClassifier,
+        generator domain.ReportGenerator,
+        logger *zap.Logger,
+) *AnalyzeUseCase <span class="cov6" title="6">{
+        return &amp;AnalyzeUseCase{
+                gitlabClient: gitlabClient,
+                scanner:      scanner,
+                parser:       parser,
+                classifier:   classifier,
+                generator:    generator,
+                logger:       logger,
+                ctx:          ctx,
+        }
+}</span>
+
+// Execute runs the main dependency analysis workflow
+func (uc *AnalyzeUseCase) Execute(repositoryURLs []string) (*AnalyzeResponse, error) <span class="cov5" title="4">{
+        uc.logger.Info("Starting dependency analysis workflow")
+
+        // Step 1: Get repositories from URLs (with concurrency)
+        var repositories []*domain.Repository
+        var mu sync.Mutex
+        var wg sync.WaitGroup
+
+        // Channel to collect errors
+        errChan := make(chan error, len(repositoryURLs))
+
+        for _, repoURL := range repositoryURLs </span><span class="cov6" title="5">{
+                wg.Add(1)
+                go func(repoURL string) </span><span class="cov6" title="5">{
+                        defer wg.Done()
+
+                        repos, err := uc.gitlabClient.GetRepositoriesList(uc.ctx, repoURL)
+                        if err != nil </span><span class="cov1" title="1">{
+                                errChan &lt;- err
+                                return
+                        }</span>
+
+                        <span class="cov5" title="4">mu.Lock()
+                        repositories = append(repositories, repos...)
+                        mu.Unlock()</span>
+                }(repoURL)
+        }
+
+        // Wait for all goroutines to complete
+        <span class="cov5" title="4">wg.Wait()
+        close(errChan)
+
+        // Check for errors
+        for err := range errChan </span><span class="cov1" title="1">{
+                if err != nil </span><span class="cov1" title="1">{
+                        return nil, err
+                }</span>
+        }
+
+        <span class="cov4" title="3">for _, repo := range repositories </span><span class="cov5" title="4">{
+                uc.logger.Info("Found repository", zap.String("name", repo.Name), zap.String("url", repo.URL))
+        }</span>
+
+        // Step 2: Transform repositories to projects (with concurrency)
+        <span class="cov4" title="3">var allProjects []*domain.Project
+        var projectsMu sync.Mutex
+        var projectsWg sync.WaitGroup
+
+        for _, repo := range repositories </span><span class="cov5" title="4">{
+                projectsWg.Add(1)
+                go func(repository *domain.Repository) </span><span class="cov5" title="4">{
+                        defer projectsWg.Done()
+
+                        projects, err := uc.scanner.DetectProjects(uc.ctx, repository)
+                        if err != nil </span><span class="cov1" title="1">{
+                                uc.logger.Error("Failed to detect projects in repository",
+                                        zap.String("repo_name", repository.Name),
+                                        zap.Error(err))
+                                return
+                        }</span>
+
+                        <span class="cov4" title="3">projectsMu.Lock()
+                        allProjects = append(allProjects, projects...)
+                        projectsMu.Unlock()</span>
+                }(repo)
+        }
+
+        // Wait for all project detection goroutines to complete
+        <span class="cov4" title="3">projectsWg.Wait()
+
+        uc.logger.Info("Detected projects across all repositories",
+                zap.Int("total_projects", len(allProjects)))
+
+        for _, project := range allProjects </span><span class="cov4" title="3">{
+                uc.logger.Info("Detected project",
+                        zap.String("project_id", project.ID),
+                        zap.String("project_name", project.Name),
+                        zap.String("language", project.Language),
+                        zap.String("path", project.Path),
+                        zap.Int("dependency_files", len(project.DependencyFiles)))
+        }</span>
+
+        // Step 3: Parse dependency files and classify dependencies (with concurrency)
+        <span class="cov4" title="3">totalDependencies, internalCount, externalCount, err := uc.processProjectsConcurrently(allProjects)
+        if err != nil </span><span class="cov0" title="0">{
+                uc.logger.Error("Failed to process projects concurrently", zap.Error(err))
+                return nil, err
+        }</span>
+
+        // Step 4: Generate HTML report with all results
+        <span class="cov4" title="3">uc.logger.Info("Generating HTML report", zap.Int("projects_count", len(allProjects)))
+        if err := uc.generator.GenerateHTML(uc.ctx, allProjects); err != nil </span><span class="cov1" title="1">{
+                uc.logger.Error("Failed to generate HTML report", zap.Error(err))
+                return nil, err
+        }</span>
+        <span class="cov3" title="2">uc.logger.Info("HTML report generated successfully")
+
+        // Step 5: Save report to output file (handled by generator)
+
+        // Calculate response metrics
+        response := &amp;AnalyzeResponse{
+                TotalProjects:     len(allProjects),
+                TotalDependencies: totalDependencies,
+                InternalCount:     internalCount,
+                ExternalCount:     externalCount,
+        }
+
+        uc.logger.Info("Dependency analysis completed",
+                zap.Int("total_projects", response.TotalProjects),
+                zap.Int("total_dependencies", response.TotalDependencies),
+                zap.Int("internal_count", response.InternalCount),
+                zap.Int("external_count", response.ExternalCount))
+
+        return response, nil</span>
+}
+
+// processProjectsConcurrently processes all projects concurrently using worker pools
+func (uc *AnalyzeUseCase) processProjectsConcurrently(projects []*domain.Project) (int, int, int, error) <span class="cov4" title="3">{
+        uc.logger.Info("Starting concurrent project processing",
+                zap.Int("total_projects", len(projects)),
+                zap.Int("project_workers", defaultProjectWorkers))
+
+        // Shared counters with mutex protection
+        var totalDependencies int
+        var internalCount int
+        var externalCount int
+        var mu sync.Mutex
+
+        // Error collection
+        var errors []error
+        var errorMu sync.Mutex
+
+        // Create project processing channel
+        projectChan := make(chan *domain.Project, len(projects))
+
+        // Start worker goroutines
+        var wg sync.WaitGroup
+        for i := 0; i &lt; defaultProjectWorkers; i++ </span><span class="cov10" title="15">{
+                wg.Add(1)
+                go func(workerID int) </span><span class="cov10" title="15">{
+                        defer wg.Done()
+                        uc.logger.Debug("Started project worker", zap.Int("worker_id", workerID))
+
+                        for project := range projectChan </span><span class="cov4" title="3">{
+                                uc.logger.Debug("Processing project in worker",
+                                        zap.Int("worker_id", workerID),
+                                        zap.String("project_id", project.ID),
+                                        zap.String("project_name", project.Name))
+
+                                projectDeps, projectInternal, projectExternal, err := uc.processProject(project)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        errorMu.Lock()
+                                        errors = append(errors, err)
+                                        errorMu.Unlock()
+                                        uc.logger.Error("Failed to process project",
+                                                zap.String("project_id", project.ID),
+                                                zap.String("project_name", project.Name),
+                                                zap.Error(err))
+                                        continue</span>
+                                }
+
+                                // Update shared counters
+                                <span class="cov4" title="3">mu.Lock()
+                                totalDependencies += projectDeps
+                                internalCount += projectInternal
+                                externalCount += projectExternal
+                                mu.Unlock()
+
+                                uc.logger.Info("Completed project processing",
+                                        zap.String("project_id", project.ID),
+                                        zap.String("project_name", project.Name),
+                                        zap.Int("dependencies", projectDeps),
+                                        zap.Int("internal", projectInternal),
+                                        zap.Int("external", projectExternal))</span>
+                        }
+
+                        <span class="cov10" title="15">uc.logger.Debug("Finished project worker", zap.Int("worker_id", workerID))</span>
+                }(i)
+        }
+
+        // Send projects to workers
+        <span class="cov4" title="3">for _, project := range projects </span><span class="cov4" title="3">{
+                projectChan &lt;- project
+        }</span>
+        <span class="cov4" title="3">close(projectChan)
+
+        // Wait for all workers to complete
+        wg.Wait()
+
+        // Check for errors
+        if len(errors) &gt; 0 </span><span class="cov0" title="0">{
+                uc.logger.Error("Some projects failed to process",
+                        zap.Int("error_count", len(errors)),
+                        zap.Int("successful_projects", len(projects)-len(errors)))
+                // Continue with partial results rather than failing completely
+        }</span>
+
+        <span class="cov4" title="3">uc.logger.Info("Completed concurrent project processing",
+                zap.Int("total_dependencies", totalDependencies),
+                zap.Int("internal_count", internalCount),
+                zap.Int("external_count", externalCount),
+                zap.Int("errors", len(errors)))
+
+        return totalDependencies, internalCount, externalCount, nil</span>
+}
+
+// processProject processes a single project's dependency files concurrently
+func (uc *AnalyzeUseCase) processProject(project *domain.Project) (int, int, int, error) <span class="cov4" title="3">{
+        uc.logger.Info("Parsing dependencies for project",
+                zap.String("project_id", project.ID),
+                zap.String("project_name", project.Name),
+                zap.Int("dependency_files", len(project.DependencyFiles)))
+
+        // Shared project-level data
+        var projectDependencies []*domain.Dependency
+        var projectMu sync.Mutex
+        var projectInternal int
+        var projectExternal int
+
+        // Error collection for this project
+        var projectErrors []error
+        var projectErrorMu sync.Mutex
+
+        // Create dependency file processing channel
+        fileChan := make(chan *domain.DependencyFile, len(project.DependencyFiles))
+
+        // Start worker goroutines for dependency files
+        var fileWg sync.WaitGroup
+        workers := defaultDependencyFileWorkers
+        if len(project.DependencyFiles) &lt; workers </span><span class="cov4" title="3">{
+                workers = len(project.DependencyFiles)
+        }</span>
+
+        <span class="cov4" title="3">for i := 0; i &lt; workers; i++ </span><span class="cov4" title="3">{
+                fileWg.Add(1)
+                go func(workerID int) </span><span class="cov4" title="3">{
+                        defer fileWg.Done()
+
+                        for dependencyFile := range fileChan </span><span class="cov4" title="3">{
+                                uc.logger.Debug("Parsing dependency file in worker",
+                                        zap.Int("worker_id", workerID),
+                                        zap.String("file_path", dependencyFile.Path),
+                                        zap.String("language", dependencyFile.Language))
+
+                                dependencies, err := uc.parser.ParseFile(uc.ctx, dependencyFile)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        projectErrorMu.Lock()
+                                        projectErrors = append(projectErrors, err)
+                                        projectErrorMu.Unlock()
+                                        uc.logger.Error("Failed to parse dependency file",
+                                                zap.String("file_path", dependencyFile.Path),
+                                                zap.String("language", dependencyFile.Language),
+                                                zap.Error(err))
+                                        continue</span>
+                                }
+
+                                // Classify dependencies concurrently
+                                <span class="cov4" title="3">classifiedDeps, internalCount, externalCount := uc.classifyDependenciesConcurrently(dependencies)
+
+                                // Update project-level data
+                                projectMu.Lock()
+                                projectDependencies = append(projectDependencies, classifiedDeps...)
+                                projectInternal += internalCount
+                                projectExternal += externalCount
+                                projectMu.Unlock()
+
+                                uc.logger.Debug("Parsed dependencies from file",
+                                        zap.String("file_path", dependencyFile.Path),
+                                        zap.Int("dependencies_count", len(dependencies)))</span>
+                        }
+                }(i)
+        }
+
+        // Send dependency files to workers
+        <span class="cov4" title="3">for _, dependencyFile := range project.DependencyFiles </span><span class="cov4" title="3">{
+                fileChan &lt;- dependencyFile
+        }</span>
+        <span class="cov4" title="3">close(fileChan)
+
+        // Wait for all file workers to complete
+        fileWg.Wait()
+
+        // Update project with parsed dependencies
+        project.Dependencies = projectDependencies
+
+        // Log project errors but don't fail the entire project
+        if len(projectErrors) &gt; 0 </span><span class="cov0" title="0">{
+                uc.logger.Warn("Some dependency files failed to parse in project",
+                        zap.String("project_id", project.ID),
+                        zap.String("project_name", project.Name),
+                        zap.Int("error_count", len(projectErrors)),
+                        zap.Int("successful_files", len(project.DependencyFiles)-len(projectErrors)))
+        }</span>
+
+        <span class="cov4" title="3">uc.logger.Info("Completed dependency parsing for project",
+                zap.String("project_id", project.ID),
+                zap.String("project_name", project.Name),
+                zap.Int("total_dependencies", len(projectDependencies)))
+
+        return len(projectDependencies), projectInternal, projectExternal, nil</span>
+}
+
+// classifyDependenciesConcurrently classifies dependencies as internal or external concurrently
+func (uc *AnalyzeUseCase) classifyDependenciesConcurrently(
+        dependencies []*domain.Dependency,
+) ([]*domain.Dependency, int, int) <span class="cov4" title="3">{
+        if len(dependencies) == 0 </span><span class="cov0" title="0">{
+                return dependencies, 0, 0
+        }</span>
+
+        // For small numbers of dependencies, process sequentially to avoid overhead
+        <span class="cov4" title="3">if len(dependencies) &lt;= 10 </span><span class="cov4" title="3">{
+                var internalCount int
+                var externalCount int
+                for _, dep := range dependencies </span><span class="cov4" title="3">{
+                        dep.IsInternal = uc.classifier.IsInternal(uc.ctx, dep)
+                        if dep.IsInternal </span><span class="cov0" title="0">{
+                                internalCount++
+                        }</span> else<span class="cov4" title="3"> {
+                                externalCount++
+                        }</span>
+                }
+                <span class="cov4" title="3">return dependencies, internalCount, externalCount</span>
+        }
+
+        // For larger numbers, use concurrency
+        <span class="cov0" title="0">var internalCount int
+        var externalCount int
+        var mu sync.Mutex
+
+        var wg sync.WaitGroup
+        for _, dep := range dependencies </span><span class="cov0" title="0">{
+                wg.Add(1)
+                go func(dependency *domain.Dependency) </span><span class="cov0" title="0">{
+                        defer wg.Done()
+
+                        isInternal := uc.classifier.IsInternal(uc.ctx, dependency)
+
+                        mu.Lock()
+                        dependency.IsInternal = isInternal
+                        if isInternal </span><span class="cov0" title="0">{
+                                internalCount++
+                        }</span> else<span class="cov0" title="0"> {
+                                externalCount++
+                        }</span>
+                        <span class="cov0" title="0">mu.Unlock()</span>
+                }(dep)
+        }
+
+        <span class="cov0" title="0">wg.Wait()
+        return dependencies, internalCount, externalCount</span>
+}
+</pre>
+
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

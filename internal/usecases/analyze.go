@@ -392,10 +392,11 @@ func (uc *AnalyzeUseCase) classifyDependenciesConcurrently(
 		go func(dependency *domain.Dependency) {
 			defer wg.Done()
 
-			dependency.IsInternal = uc.classifier.IsInternal(uc.ctx, dependency)
+			isInternal := uc.classifier.IsInternal(uc.ctx, dependency)
 
 			mu.Lock()
-			if dependency.IsInternal {
+			dependency.IsInternal = isInternal
+			if isInternal {
 				internalCount++
 			} else {
 				externalCount++
