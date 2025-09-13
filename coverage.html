@@ -680,7 +680,7 @@ func (g *Generator) sortDependencies(
         for _, depName := range dependencies </span><span class="cov9" title="16">{
                 // Find the first project that has this dependency to determine if it's internal
                 isInternal := false
-                for _, projectDeps := range projectDeps </span><span class="cov10" title="20">{
+                for _, projectDeps := range projectDeps </span><span class="cov10" title="19">{
                         if dep, exists := projectDeps[depName]; exists </span><span class="cov9" title="16">{
                                 isInternal = dep.IsInternal
                                 break</span>
@@ -1687,8 +1687,8 @@ func (p *Parser) CanParse(filePath string) bool <span class="cov6" title="14">{
                 "python": {"requirements.txt", "Pipfile", "poetry.lock", "uv.lock", "pyproject.toml"},
         }
 
-        for _, files := range supportedFiles </span><span class="cov8" title="37">{
-                for _, file := range files </span><span class="cov10" title="90">{
+        for _, files := range supportedFiles </span><span class="cov8" title="34">{
+                for _, file := range files </span><span class="cov10" title="83">{
                         if fileName == file </span><span class="cov5" title="11">{
                                 return true
                         }</span>
@@ -1817,7 +1817,7 @@ func (p *Parser) parsePythonFileWithTrivy(
 
 // Helper methods
 
-func (p *Parser) getFileName(filePath string) string <span class="cov6" title="20">{
+func (p *Parser) getFileName(filePath string) string <span class="cov7" title="20">{
         parts := strings.Split(filePath, "/")
         return parts[len(parts)-1]
 }</span>
@@ -2490,6 +2490,7 @@ func (uc *AnalyzeUseCase) classifyDependenciesConcurrently(
 
                         isInternal := uc.classifier.IsInternal(uc.ctx, dependency)
 
+                        // Use mutex to protect both the dependency field and counters
                         mu.Lock()
                         dependency.IsInternal = isInternal
                         if isInternal </span><span class="cov0" title="0">{

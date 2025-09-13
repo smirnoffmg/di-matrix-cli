@@ -394,6 +394,7 @@ func (uc *AnalyzeUseCase) classifyDependenciesConcurrently(
 
 			isInternal := uc.classifier.IsInternal(uc.ctx, dependency)
 
+			// Use mutex to protect both the dependency field and counters
 			mu.Lock()
 			dependency.IsInternal = isInternal
 			if isInternal {
