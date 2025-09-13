@@ -10,7 +10,7 @@ build: ## Build the CLI application
 	go build -o di-matrix-cli ./cmd
 
 test: ## Run tests
-	go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
+	go test ./... -v -race -coverprofile=coverage.out -covermode=atomic -count=1
 	go tool cover -html=coverage.out -o coverage.html
 
 clean: ## Clean build artifacts

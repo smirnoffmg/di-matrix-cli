@@ -32,6 +32,7 @@ type AnalyzeUseCase struct {
 	generator    domain.ReportGenerator
 	logger       *zap.Logger
 	ctx          context.Context
+	classifierMu sync.Mutex // Mutex to protect classifier access (testify mocks are not thread-safe)
 }
 
 // NewAnalyzeUseCase creates a new analyze use case with dependency injection
@@ -312,8 +313,10 @@ func (uc *AnalyzeUseCase) processProject(project *domain.Project) (int, int, int
 					continue
 				}
 
-				// Classify dependencies concurrently
+				// Classify dependencies with mutex protection (testify mocks are not thread-safe)
+				uc.classifierMu.Lock()
 				classifiedDeps, internalCount, externalCount := uc.classifyDependenciesConcurrently(dependencies)
+				uc.classifierMu.Unlock()
 
 				// Update project-level data
 				projectMu.Lock()
@@ -367,45 +370,66 @@ func (uc *AnalyzeUseCase) classifyDependenciesConcurrently(
 	}
 
 	// For small numbers of dependencies, process sequentially to avoid overhead
-	if len(dependencies) <= 10 {
+	if len(dependencies) <= 5 {
 		var internalCount int
 		var externalCount int
+
 		for _, dep := range dependencies {
-			dep.IsInternal = uc.classifier.IsInternal(uc.ctx, dep)
-			if dep.IsInternal {
-				internalCount++
-			} else {
-				externalCount++
-			}
-		}
-		return dependencies, internalCount, externalCount
-	}
-
-	// For larger numbers, use concurrency
-	var internalCount int
-	var externalCount int
-	var mu sync.Mutex
-
-	var wg sync.WaitGroup
-	for _, dep := range dependencies {
-		wg.Add(1)
-		go func(dependency *domain.Dependency) {
-			defer wg.Done()
-
-			isInternal := uc.classifier.IsInternal(uc.ctx, dependency)
-
-			// Use mutex to protect both the dependency field and counters
-			mu.Lock()
-			dependency.IsInternal = isInternal
+			isInternal := uc.classifier.IsInternal(uc.ctx, dep)
+			dep.IsInternal = isInternal
 			if isInternal {
 				internalCount++
 			} else {
 				externalCount++
 			}
-			mu.Unlock()
-		}(dep)
+		}
+
+		return dependencies, internalCount, externalCount
 	}
 
-	wg.Wait()
+	// For larger numbers, use concurrent processing with channels
+	type classificationResult struct {
+		index      int
+		isInternal bool
+	}
+
+	results := make(chan classificationResult, len(dependencies))
+	var wg sync.WaitGroup
+
+	// Process dependencies concurrently
+	for i, dep := range dependencies {
+		wg.Add(1)
+		go func(index int, dependency *domain.Dependency) {
+			defer wg.Done()
+
+			// Classify dependency (this is protected by the global mutex in the caller)
+			isInternal := uc.classifier.IsInternal(uc.ctx, dependency)
+
+			// Send result through channel
+			results <- classificationResult{
+				index:      index,
+				isInternal: isInternal,
+			}
+		}(i, dep)
+	}
+
+	// Close results channel when all goroutines are done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results and update dependencies
+	var internalCount int
+	var externalCount int
+	for result := range results {
+		dependencies[result.index].IsInternal = result.isInternal
+		if result.isInternal {
+			internalCount++
+		} else {
+			externalCount++
+		}
+	}
+
 	return dependencies, internalCount, externalCount
 }

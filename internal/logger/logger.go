@@ -46,11 +46,8 @@ func GetLogger() *zap.Logger {
 }
 
 func SetLevel(level zapcore.Level) {
-	once.Do(func() {
-		instance = &Logger{
-			atomicLevel: zap.NewAtomicLevelAt(zap.InfoLevel),
-		}
-	})
+	// Ensure logger is initialized first
+	GetLogger()
 
 	instance.mu.Lock()
 	defer instance.mu.Unlock()
