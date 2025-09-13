@@ -32,20 +32,16 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
-        go tool cover -html=coverage.out -o coverage.html
+        go test ./... -v -race -coverprofile=coverage.txt
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       with:
-        file: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
+        token: ${{ secrets.CODECOV_TOKEN }}
 
     - name: Archive coverage artifacts
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: |
-          coverage.out
-          coverage.html
+          coverage.txt
