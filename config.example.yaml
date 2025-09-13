@@ -1,0 +1,28 @@
+# Dependency Matrix CLI Configuration Example
+# Copy this file to config.yaml and update with your GitLab settings
+
+gitlab:
+  base_url: "https://gitlab.com"
+  token: "your-gitlab-token-here"
+
+repositories:
+  - url: "https://gitlab.com/group/my-backend-service"
+    branch: "develop" # Optional, defaults to main branch if not specified
+
+internal:
+  domains:
+    - "gitlab.company.com/group"
+    - "github.com/company"
+
+  patterns:
+    - "@company/"
+    - "com.company."
+    - "company-"
+
+output:
+  html_file: "dependency-matrix.html"
+  title: "My Organization Dependency Matrix"
+
+# Timeout configuration
+timeout:
+  analysis_timeout_minutes: 10 # Analysis timeout in minutes (default: 10)

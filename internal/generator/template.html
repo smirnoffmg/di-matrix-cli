@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f4ff',
+                            100: '#e0e7ff',
+                            500: '#667eea',
+                            600: '#5a67d8',
+                            700: '#4c51bf',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* CSS-only tab functionality */
+
+        .tab-button {
+            cursor: pointer;
+        }
+
+        .tab-button.active {
+            background-color: #667eea;
+            color: white;
+        }
+
+        .tab-button:not(.active) {
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+
+        .tab-button:not(.active):hover {
+            background-color: #e5e7eb;
+        }
+
+        /* Radio button tab functionality */
+        input[name="language-tabs"] {
+            display: none;
+        }
+
+        /* Show/hide tab content based on radio selection */
+        {{range $lang, $matrix := .Matrix.languages}}
+        #tab-{{$lang}}:checked ~ .tab-content #content-{{$lang}} {
+            display: block;
+        }
+        #tab-{{$lang}}:not(:checked) ~ .tab-content #content-{{$lang}} {
+            display: none;
+        }
+        {{end}}
+
+        /* Tab button styling based on radio state */
+        {{range $lang, $matrix := .Matrix.languages}}
+        #tab-{{$lang}}:checked ~ .tab-buttons label[for="tab-{{$lang}}"] {
+            background-color: #667eea;
+            color: white;
+        }
+        #tab-{{$lang}}:not(:checked) ~ .tab-buttons label[for="tab-{{$lang}}"] {
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+        #tab-{{$lang}}:not(:checked) ~ .tab-buttons label[for="tab-{{$lang}}"]:hover {
+            background-color: #e5e7eb;
+        }
+        {{end}}
+    </style>
+</head>
+
+<body class="bg-gray-50 font-sans">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-primary-500 to-purple-600 text-white p-8 rounded-xl mb-8 text-center">
+            <h1 class="text-4xl font-bold mb-2">{{.Title}}</h1>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow-md text-center">
+                <h3 class="text-primary-500 font-semibold mb-2">Total Projects</h3>
+                <div class="text-3xl font-bold text-gray-800">{{.Summary.total_projects}}</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md text-center">
+                <h3 class="text-primary-500 font-semibold mb-2">Total Dependencies</h3>
+                <div class="text-3xl font-bold text-gray-800">{{.Summary.total_dependencies}}</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md text-center">
+                <h3 class="text-primary-500 font-semibold mb-2">Internal Dependencies</h3>
+                <div class="text-3xl font-bold text-gray-800">{{.Summary.internal_external.internal}}</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md text-center">
+                <h3 class="text-primary-500 font-semibold mb-2">External Dependencies</h3>
+                <div class="text-3xl font-bold text-gray-800">{{.Summary.internal_external.external}}</div>
+            </div>
+        </div>
+
+        <!-- Dependency Matrix Tables -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-800">Dependency Matrix</h3>
+            </div>
+
+            <!-- Hidden radio buttons for tab functionality -->
+            {{$first := true}}
+            {{range $lang, $matrix := .Matrix.languages}}
+            <input type="radio" id="tab-{{$lang}}" name="language-tabs" class="hidden" {{if $first}}checked{{end}}>
+            {{$first = false}}
+            {{end}}
+
+            <div class="tab-buttons flex flex-wrap gap-2 mb-4">
+                {{$first := true}}
+                {{range $lang, $matrix := .Matrix.languages}}
+                {{$count := len $matrix.projects}}
+                <label for="tab-{{$lang}}"
+                    class="tab-button px-4 py-2 rounded-lg font-medium transition-colors duration-200 {{if $first}}active{{end}}">
+                    {{$lang}} ({{$count}})
+                </label>
+                {{$first = false}}
+                {{end}}
+            </div>
+
+            <div class="tab-content">
+                {{$first := true}}
+                {{range $lang, $matrix := .Matrix.languages}}
+                <div class="tab-content {{if $first}}active{{end}}" id="content-{{$lang}}">
+                    <!-- Matrix Statistics -->
+                    <div class="mb-4 p-3 bg-gray-50 rounded text-sm text-gray-600">
+                        <span>Showing {{len $matrix.projects}} projects × {{len $matrix.dependencies}}
+                            dependencies</span>
+                    </div>
+
+                    <div class="overflow-x-auto border border-gray-200 rounded">
+                        <table class="min-w-full border-collapse border border-gray-300"
+                            style="table-layout: auto; width: max-content;">
+                            <thead class="sticky top-0 bg-gray-50 z-20">
+                                <tr>
+                                    <th class="border border-gray-300 px-4 py-2 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 z-30"
+                                        style="width: 200px;">Project</th>
+                                    {{range $matrix.dependencies}}
+                                    <th class="border border-gray-300 px-1 py-2 text-center font-semibold text-gray-700 text-xs"
+                                        style="min-width: 150px; max-width: 250px;">
+                                        <div class="flex items-center justify-center h-12 px-1">
+                                            <span class="break-words leading-tight" title="{{.}}"
+                                                style="word-break: break-word; line-height: 1.2;">{{.}}</span>
+                                        </div>
+                                    </th>
+                                    {{end}}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range $projectIndex, $project := $matrix.projects}}
+                                <tr class="hover:bg-gray-50">
+                                    <td
+                                        class="border border-gray-300 px-4 py-2 font-medium text-gray-800 sticky left-0 bg-white z-10">
+                                        <div class="text-sm">
+                                            <div class="font-semibold">{{$project.Name}}</div>
+                                            <div class="text-xs text-gray-500">{{$project.Language}} •
+                                                {{$project.Repository.Name}}</div>
+                                        </div>
+                                    </td>
+                                    {{range $cellIndex, $cell := index $matrix.matrix $projectIndex}}
+                                    <td class="border border-gray-300 px-2 py-2 text-center text-xs">
+                                        {{if $cell}}
+                                        <div class="flex flex-col items-center">
+                                            <span class="font-mono text-gray-800"
+                                                title="Version: {{$cell.version}}">{{$cell.version}}</span>
+                                            <span
+                                                class="text-xs {{if $cell.is_internal}}text-green-600{{else}}text-red-600{{end}}"
+                                                title="{{if $cell.is_internal}}Internal dependency{{else}}External dependency{{end}}">
+                                                {{if $cell.is_internal}}I{{else}}E{{end}}
+                                            </span>
+                                        </div>
+                                        {{else}}
+                                        <span class="text-gray-300">-</span>
+                                        {{end}}
+                                    </td>
+                                    {{end}}
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {{$first = false}}
+                {{end}}
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

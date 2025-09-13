@@ -1,0 +1,129 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  # Start with standard linters, then add specific ones
+  default: standard
+
+  enable:
+    # Core security and bug detection
+    - gosec
+    - errcheck
+    - staticcheck
+    - govet
+    - ineffassign
+    - unused
+
+    # Code quality
+    - gocritic
+    - revive
+    - cyclop
+    - misspell
+    - dupl
+
+    # testing
+    - usetesting
+    - testpackage
+    - testifylint
+    - paralleltest
+
+    # Style and consistency
+    - whitespace
+    - bodyclose
+    - rowserrcheck
+
+    # Specific to your preferences
+    - depguard # Dependency restrictions
+    - gochecknoglobals
+    - gochecknoinits
+
+  # All settings can be found here https://github.com/golangci/golangci-lint/blob/HEAD/.golangci.reference.yml
+  settings:
+    cyclop:
+      max-complexity: 15
+
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        - "(*fsm.Event).Args"
+        - "e.Args"
+        - "e.Args[0]"
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - unnamedResult
+        - hugeParam
+
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+          # arguments: ["checkPrivateReceivers", "sayRepetitiveInsteadOfStutters"]
+        - name: package-comments
+          disabled: true # Often too strict for internal packages
+
+    staticcheck:
+      checks: ["all", "-ST1000", "-ST1016"] # Disable package comment requirements
+
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "github.com/golang/protobuf"
+              desc: "Use google.golang.org/protobuf instead"
+
+  exclusions:
+    # Use predefined exclusions to reduce noise
+    presets:
+      - std-error-handling
+      - common-false-positives
+
+    rules:
+      # Test files can be more relaxed
+      - path: '_test\.go'
+        linters:
+          - gosec
+          - errcheck
+          - cyclop
+          - gochecknoglobals
+
+      # Main files often need globals
+      - path: 'main\.go'
+        linters:
+          - gochecknoglobals
+
+      - path: 'di\.go'
+        linters:
+          - gochecknoglobals
+
+      # FSM files have false positive errcheck issues with type assertions
+      - path: 'fsm\.go'
+        linters:
+          - errcheck
+
+      # Generated docs files can have globals and init functions
+      - path: 'docs\.go'
+        linters:
+          - gochecknoglobals
+          - gochecknoinits
+
+formatters:
+  enable:
+    - goimports
+    - gofumpt
+    - golines
+
+  settings:
+    golines:
+      max-len: 120
+
+issues:
+  max-same-issues: 50
