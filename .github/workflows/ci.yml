@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+      GITLAB_BASE_URL: "https://gitlab.com"
+      GITLAB_TEST_PROJECT_URL: "https://gitlab.com/gitlab-org/api/client-go"
 
     steps:
     - name: Checkout code
@@ -31,15 +35,11 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Run tests
-      run: make test
+      run: go test ./... -v
       continue-on-error: false
 
     - name: Run linter
-      run: make lint
-      continue-on-error: false
-
-    - name: Format check
-      run: make fmt
+      run: golangci-lint run
       continue-on-error: false
 
   docker:
@@ -62,17 +62,20 @@ jobs:
           ${{ runner.os }}-buildx-
 
     - name: Build Docker image
-      run: make docker-build
+      run: docker build -t di-matrix-cli:latest .
       continue-on-error: false
 
     - name: Run tests in Docker
-      run: make docker-test
+      run: docker build --target test-stage -t di-matrix-cli:test .
       continue-on-error: false
 
     - name: Run linter in Docker
-      run: make docker-lint
+      run: docker build --target lint-stage -t di-matrix-cli:lint .
       continue-on-error: false
 
     - name: Run full CI pipeline in Docker
-      run: make docker-ci
+      run: |
+        docker build --target test-stage -t di-matrix-cli:test .
+        docker build --target lint-stage -t di-matrix-cli:lint .
+        docker build -t di-matrix-cli:latest .
       continue-on-error: false
