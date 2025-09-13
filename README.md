@@ -4,6 +4,8 @@
 
 ---
 
+[![codecov](https://codecov.io/gh/smirnoffmg/di-matrix-cli/graph/badge.svg?token=QODUOL3T3V)](https://codecov.io/gh/smirnoffmg/di-matrix-cli)
+
 ## Overview
 
 The Dependency Matrix CLI Tool helps teams analyze dependencies across multiple GitLab repositories, supporting **monorepos** and **multi-language projects**. It produces an **interactive HTML report** that makes it easy to review internal vs external dependencies, detect outdated libraries, and simplify audits.
