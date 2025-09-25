@@ -10,12 +10,17 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 //go:embed template.html
 var templateContent string
+
+// versionRegex matches semantic version patterns (e.g., 1.2.3, v1.2.3, 1.2.3-beta.1)
+var versionRegex = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9.-]+))?(?:\+([a-zA-Z0-9.-]+))?$`)
 
 // Generator creates HTML reports from project dependencies
 type Generator struct {
@@ -27,6 +32,118 @@ func NewGenerator(outputPath string) *Generator {
 	return &Generator{
 		outputPath: outputPath,
 	}
+}
+
+// VersionInfo represents parsed version information
+type VersionInfo struct {
+	Major      int
+	Minor      int
+	Patch      int
+	PreRelease string
+	Build      string
+	Original   string
+}
+
+// parseVersion parses a version string into VersionInfo
+func parseVersion(version string) *VersionInfo {
+	if version == "" {
+		return nil
+	}
+
+	matches := versionRegex.FindStringSubmatch(version)
+	if len(matches) < 4 {
+		return &VersionInfo{Original: version}
+	}
+
+	major, _ := strconv.Atoi(matches[1])
+	minor, _ := strconv.Atoi(matches[2])
+	patch, _ := strconv.Atoi(matches[3])
+
+	preRelease := ""
+	build := ""
+	if len(matches) > 4 && matches[4] != "" {
+		preRelease = matches[4]
+	}
+	if len(matches) > 5 && matches[5] != "" {
+		build = matches[5]
+	}
+
+	return &VersionInfo{
+		Major:      major,
+		Minor:      minor,
+		Patch:      patch,
+		PreRelease: preRelease,
+		Build:      build,
+		Original:   version,
+	}
+}
+
+// compareVersions compares two versions and returns:
+// -1 if v1 < v2
+// 0 if v1 == v2
+// 1 if v1 > v2
+func compareVersions(v1, v2 string) int {
+	info1 := parseVersion(v1)
+	info2 := parseVersion(v2)
+
+	if info1 == nil || info2 == nil {
+		// If we can't parse versions, do string comparison
+		return strings.Compare(v1, v2)
+	}
+
+	// Compare major version
+	if info1.Major != info2.Major {
+		if info1.Major < info2.Major {
+			return -1
+		}
+		return 1
+	}
+
+	// Compare minor version
+	if info1.Minor != info2.Minor {
+		if info1.Minor < info2.Minor {
+			return -1
+		}
+		return 1
+	}
+
+	// Compare patch version
+	if info1.Patch != info2.Patch {
+		if info1.Patch < info2.Patch {
+			return -1
+		}
+		return 1
+	}
+
+	// Compare pre-release versions
+	if info1.PreRelease == "" && info2.PreRelease == "" {
+		return 0
+	}
+	if info1.PreRelease == "" {
+		return 1 // v1 is stable, v2 is pre-release
+	}
+	if info2.PreRelease == "" {
+		return -1 // v2 is stable, v1 is pre-release
+	}
+
+	// Both are pre-release, compare lexicographically
+	return strings.Compare(info1.PreRelease, info2.PreRelease)
+}
+
+// findMaxVersion finds the maximum version among all versions of a dependency
+func findMaxVersion(versions []string) string {
+	if len(versions) == 0 {
+		return ""
+	}
+
+	maxVersion := versions[0]
+	for _, version := range versions[1:] {
+		if compareVersions(version, maxVersion) > 0 {
+			maxVersion = version
+		}
+	}
+
+	return maxVersion
 }
 
 // OutputPath returns the output path
@@ -132,9 +249,8 @@ func (g *Generator) sortDependencies(
 	return sortedDependencies
 }
 
-// createCombinedMatrix creates a combined matrix for all projects
-func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]map[string]interface{}, [][]interface{}) {
-	// Collect all unique dependencies across filtered projects
+// collectAllDependencies collects all unique dependencies across projects
+func (g *Generator) collectAllDependencies(projects []*domain.Project) (map[string]*domain.Dependency, []string) {
 	allDependencySet := make(map[string]*domain.Dependency)
 	for _, project := range projects {
 		for _, dep := range project.Dependencies {
@@ -151,7 +267,11 @@ func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]map[stri
 		allDependencies = append(allDependencies, depName)
 	}
 
-	// Create project dependency map for quick lookup
+	return allDependencySet, allDependencies
+}
+
+// createProjectDependencyMap creates a map for quick dependency lookup by project
+func (g *Generator) createProjectDependencyMap(projects []*domain.Project) map[string]map[string]*domain.Dependency {
 	allProjectDeps := make(map[string]map[string]*domain.Dependency)
 	for _, project := range projects {
 		allProjectDeps[project.ID] = make(map[string]*domain.Dependency)
@@ -159,9 +279,41 @@ func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]map[stri
 			allProjectDeps[project.ID][dep.Name] = dep
 		}
 	}
+	return allProjectDeps
+}
+
+// findMaxVersionsForDependencies finds the maximum version for each dependency
+func (g *Generator) findMaxVersionsForDependencies(
+	dependencies []string,
+	projects []*domain.Project,
+	projectDeps map[string]map[string]*domain.Dependency,
+) map[string]string {
+	maxVersions := make(map[string]string)
+	for _, depName := range dependencies {
+		var versions []string
+		for _, project := range projects {
+			if dep, exists := projectDeps[project.ID][depName]; exists && dep.Version != "" {
+				versions = append(versions, dep.Version)
+			}
+		}
+		maxVersions[depName] = findMaxVersion(versions)
+	}
+	return maxVersions
+}
+
+// createCombinedMatrix creates a combined matrix for all projects
+func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]map[string]interface{}, [][]interface{}) {
+	// Collect all unique dependencies across filtered projects
+	allDependencySet, allDependencies := g.collectAllDependencies(projects)
+
+	// Create project dependency map for quick lookup
+	allProjectDeps := g.createProjectDependencyMap(projects)
 
 	// Sort dependencies by type (internal first) and then alphabetically
 	allDependencies = g.sortDependencies(allDependencies, allProjectDeps)
+
+	// Find maximum version for each dependency across all projects
+	maxVersions := g.findMaxVersionsForDependencies(allDependencies, projects, allProjectDeps)
 
 	// Convert to dependency objects with name and latest_version
 	var dependencyObjects []map[string]interface{}
@@ -179,12 +331,17 @@ func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]map[stri
 		combinedMatrix[i] = make([]interface{}, len(allDependencies))
 		for j, depName := range allDependencies {
 			if dep, exists := allProjectDeps[project.ID][depName]; exists {
+				maxVersion := maxVersions[depName]
+				isOutdated := maxVersion != "" && dep.Version != "" && compareVersions(dep.Version, maxVersion) < 0
+
 				combinedMatrix[i][j] = map[string]interface{}{
 					"version":        dep.Version,
 					"latest_version": dep.LatestVersion,
 					"constraint":     dep.Constraint,
 					"is_internal":    dep.IsInternal,
 					"ecosystem":      dep.Ecosystem,
+					"max_version":    maxVersion,
+					"is_outdated":    isOutdated,
 				}
 			} else {
 				combinedMatrix[i][j] = nil

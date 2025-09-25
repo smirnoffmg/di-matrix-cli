@@ -100,21 +100,21 @@
                             <td
                                 class="border border-gray-300 px-4 py-2 font-medium text-gray-800 sticky left-0 bg-white z-10">
                                 <div class="text-sm">
-                                    {{if $project.Path}}
-                                    <div class="font-semibold text-gray-900">{{$project.Path}}</div>
-                                    {{else}}
-                                    <div class="font-semibold text-gray-900">root</div>
-                                    {{end}}
-                                    <a href="{{$project.Repository.WebURL}}" target="_blank" class="text-blue-600 hover:text-blue-800 hover:underline text-xs"
+                                    <a href="{{$project.Repository.WebURL}}" target="_blank" class="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                                         title="Open repository">{{$project.Repository.Name}}</a>
+                                    {{if $project.Path}}
+                                    <div class="text-xs text-gray-600">{{$project.Path}}</div>
+                                    {{else}}
+                                    <div class="text-xs text-gray-600">root</div>
+                                    {{end}}
                                 </div>
                             </td>
                             {{range $cellIndex, $cell := index $.Matrix.matrix $projectIndex}}
-                            <td class="border border-gray-300 px-2 py-2 text-center text-xs">
+                            <td class="border border-gray-300 px-2 py-2 text-center text-xs {{if and $cell $cell.is_outdated}}bg-yellow-100{{end}}">
                                 {{if $cell}}
                                 <div class="flex flex-col items-center">
                                     <span class="font-mono text-gray-800"
-                                        title="Current version: {{$cell.version}}">{{$cell.version}}</span>
+                                        title="Current version: {{$cell.version}}{{if $cell.is_outdated}} (outdated - max: {{$cell.max_version}}){{end}}">{{$cell.version}}</span>
                                     <span
                                         class="text-xs {{if $cell.is_internal}}text-green-600{{else}}text-red-600{{end}}"
                                         title="{{if $cell.is_internal}}Internal dependency{{else}}External dependency{{end}}">
