@@ -47,6 +47,14 @@ FROM alpine:3.21 AS final
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates tzdata
 
+# Environment variables for runtime configuration
+# These can be overridden at runtime
+ENV GITLAB_BASE_URL="https://gitlab.com"
+ENV GITLAB_TOKEN=""
+ENV OUTPUT_HTML_FILE="dependency-matrix.html"
+ENV OUTPUT_TITLE="Dependency Matrix Report"
+ENV ANALYSIS_TIMEOUT_MINUTES="10"
+
 # Create non-root user for security
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
@@ -60,6 +68,9 @@ COPY --from=builder /app/di-matrix-cli /app/di-matrix-cli
 # Copy example config file
 COPY --from=builder /app/config.example.yaml /app/config.example.yaml
 
+# Create config directory for runtime mounting
+RUN mkdir -p /app/config
+
 # Change ownership to non-root user
 RUN chown -R appuser:appgroup /app
 
@@ -69,5 +80,5 @@ USER appuser
 # Set the binary as executable
 RUN chmod +x /app/di-matrix-cli
 
-# Default command
-ENTRYPOINT ["/app/di-matrix-cli"]
+# Default command with config file
+ENTRYPOINT ["/app/di-matrix-cli", "analyze", "--config", "/app/config/config.yaml"]
