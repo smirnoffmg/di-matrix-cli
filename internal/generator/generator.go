@@ -86,15 +86,6 @@ func (g *Generator) filterProjectsWithDependencies(projects []*domain.Project) [
 	return filteredProjects
 }
 
-// groupProjectsByLanguage groups projects by their language
-func (g *Generator) groupProjectsByLanguage(projects []*domain.Project) map[string][]*domain.Project {
-	projectsByLanguage := make(map[string][]*domain.Project)
-	for _, project := range projects {
-		projectsByLanguage[project.Language] = append(projectsByLanguage[project.Language], project)
-	}
-	return projectsByLanguage
-}
-
 // sortDependencies sorts dependencies by type (internal first, external after) and then alphabetically
 func (g *Generator) sortDependencies(
 	dependencies []string,
@@ -141,66 +132,17 @@ func (g *Generator) sortDependencies(
 	return sortedDependencies
 }
 
-// createLanguageMatrix creates a matrix for a specific language
-func (g *Generator) createLanguageMatrix(languageProjects []*domain.Project) map[string]interface{} {
-	// Collect unique dependencies for this language
-	dependencySet := make(map[string]bool)
-	for _, project := range languageProjects {
-		for _, dep := range project.Dependencies {
-			dependencySet[dep.Name] = true
-		}
-	}
-
-	// Convert to slice for sorting
-	var dependencies []string
-	for depName := range dependencySet {
-		dependencies = append(dependencies, depName)
-	}
-
-	// Create project dependency map for quick lookup
-	projectDeps := make(map[string]map[string]*domain.Dependency)
-	for _, project := range languageProjects {
-		projectDeps[project.ID] = make(map[string]*domain.Dependency)
-		for _, dep := range project.Dependencies {
-			projectDeps[project.ID][dep.Name] = dep
-		}
-	}
-
-	// Sort dependencies by type (internal first) and then alphabetically
-	dependencies = g.sortDependencies(dependencies, projectDeps)
-
-	// Create matrix data for this language
-	matrix := make([][]interface{}, len(languageProjects))
-	for i, project := range languageProjects {
-		matrix[i] = make([]interface{}, len(dependencies))
-		for j, depName := range dependencies {
-			if dep, exists := projectDeps[project.ID][depName]; exists {
-				matrix[i][j] = map[string]interface{}{
-					"version":     dep.Version,
-					"constraint":  dep.Constraint,
-					"is_internal": dep.IsInternal,
-					"ecosystem":   dep.Ecosystem,
-				}
-			} else {
-				matrix[i][j] = nil
-			}
-		}
-	}
-
-	return map[string]interface{}{
-		"dependencies": dependencies,
-		"projects":     languageProjects,
-		"matrix":       matrix,
-	}
-}
-
 // createCombinedMatrix creates a combined matrix for all projects
-func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]string, [][]interface{}) {
+func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]map[string]interface{}, [][]interface{}) {
 	// Collect all unique dependencies across filtered projects
-	allDependencySet := make(map[string]bool)
+	allDependencySet := make(map[string]*domain.Dependency)
 	for _, project := range projects {
 		for _, dep := range project.Dependencies {
-			allDependencySet[dep.Name] = true
+			// Keep the latest version if we have multiple instances of the same dependency
+			if existingDep, exists := allDependencySet[dep.Name]; !exists ||
+				dep.LatestVersion > existingDep.LatestVersion {
+				allDependencySet[dep.Name] = dep
+			}
 		}
 	}
 
@@ -221,6 +163,16 @@ func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]string, 
 	// Sort dependencies by type (internal first) and then alphabetically
 	allDependencies = g.sortDependencies(allDependencies, allProjectDeps)
 
+	// Convert to dependency objects with name and latest_version
+	var dependencyObjects []map[string]interface{}
+	for _, depName := range allDependencies {
+		dep := allDependencySet[depName]
+		dependencyObjects = append(dependencyObjects, map[string]interface{}{
+			"name":           dep.Name,
+			"latest_version": dep.LatestVersion,
+		})
+	}
+
 	// Create combined matrix data
 	combinedMatrix := make([][]interface{}, len(projects))
 	for i, project := range projects {
@@ -228,10 +180,11 @@ func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]string, 
 		for j, depName := range allDependencies {
 			if dep, exists := allProjectDeps[project.ID][depName]; exists {
 				combinedMatrix[i][j] = map[string]interface{}{
-					"version":     dep.Version,
-					"constraint":  dep.Constraint,
-					"is_internal": dep.IsInternal,
-					"ecosystem":   dep.Ecosystem,
+					"version":        dep.Version,
+					"latest_version": dep.LatestVersion,
+					"constraint":     dep.Constraint,
+					"is_internal":    dep.IsInternal,
+					"ecosystem":      dep.Ecosystem,
 				}
 			} else {
 				combinedMatrix[i][j] = nil
@@ -239,39 +192,21 @@ func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]string, 
 		}
 	}
 
-	return allDependencies, combinedMatrix
+	return dependencyObjects, combinedMatrix
 }
 
-// GenerateMatrix creates language-separated dependency matrices for easier template handling
+// GenerateMatrix creates a simple dependency matrix for all projects
 func (g *Generator) GenerateMatrix(ctx context.Context, projects []*domain.Project) map[string]interface{} {
 	// Filter out projects with zero dependencies
 	filteredProjects := g.filterProjectsWithDependencies(projects)
 
-	// Group projects by language
-	projectsByLanguage := g.groupProjectsByLanguage(filteredProjects)
-
-	// Create language-specific matrices
-	languageMatrices := make(map[string]map[string]interface{})
-	for language, languageProjects := range projectsByLanguage {
-		languageMatrices[language] = g.createLanguageMatrix(languageProjects)
-	}
-
 	// Create combined matrix
 	allDependencies, combinedMatrix := g.createCombinedMatrix(filteredProjects)
 
-	// Create JSON string for language matrices
-	languageMatricesJSON, err := json.Marshal(languageMatrices)
-	if err != nil {
-		// Fallback to empty object if marshaling fails
-		languageMatricesJSON = []byte("{}")
-	}
-
 	return map[string]interface{}{
-		"languages":     languageMatrices,
-		"languagesJSON": string(languageMatricesJSON),
-		"dependencies":  allDependencies,
-		"projects":      filteredProjects,
-		"matrix":        combinedMatrix,
+		"dependencies": allDependencies,
+		"projects":     filteredProjects,
+		"matrix":       combinedMatrix,
 	}
 }
 

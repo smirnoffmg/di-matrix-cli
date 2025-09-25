@@ -68,12 +68,19 @@ func TestGenerateMatrix(t *testing.T) {
 	assert.Contains(t, matrix, "matrix")
 
 	// Test dependencies list
-	dependencies := matrix["dependencies"].([]string)
+	dependencies := matrix["dependencies"].([]map[string]interface{})
 	assert.Len(t, dependencies, 4) // Should have 4 unique dependencies
-	assert.Contains(t, dependencies, "github.com/gin-gonic/gin")
-	assert.Contains(t, dependencies, "internal/company/auth")
-	assert.Contains(t, dependencies, "express")
-	assert.Contains(t, dependencies, "react")
+
+	// Extract dependency names for testing
+	depNames := make([]string, len(dependencies))
+	for i, dep := range dependencies {
+		depNames[i] = dep["name"].(string)
+	}
+
+	assert.Contains(t, depNames, "github.com/gin-gonic/gin")
+	assert.Contains(t, depNames, "internal/company/auth")
+	assert.Contains(t, depNames, "express")
+	assert.Contains(t, depNames, "react")
 
 	// Test sorting: internal first, then external alphabetically
 	expectedOrder := []string{
@@ -85,7 +92,7 @@ func TestGenerateMatrix(t *testing.T) {
 	assert.Equal(
 		t,
 		expectedOrder,
-		dependencies,
+		depNames,
 		"Dependencies should be sorted by type (internal first) and then alphabetically",
 	)
 
@@ -104,10 +111,10 @@ func TestGenerateMatrix(t *testing.T) {
 	ginIndex := -1
 	authIndex := -1
 	for i, dep := range dependencies {
-		if dep == "github.com/gin-gonic/gin" {
+		if dep["name"] == "github.com/gin-gonic/gin" {
 			ginIndex = i
 		}
-		if dep == "internal/company/auth" {
+		if dep["name"] == "internal/company/auth" {
 			authIndex = i
 		}
 	}
@@ -136,10 +143,10 @@ func TestGenerateMatrix(t *testing.T) {
 	expressIndex := -1
 	reactIndex := -1
 	for i, dep := range dependencies {
-		if dep == "express" {
+		if dep["name"] == "express" {
 			expressIndex = i
 		}
-		if dep == "react" {
+		if dep["name"] == "react" {
 			reactIndex = i
 		}
 	}
@@ -184,8 +191,26 @@ func verifyFileCreated(t *testing.T, outputPath string) string {
 	return string(content)
 }
 
-// Helper function to verify project data in content
-func verifyProjectData(t *testing.T, content string) {
+// Helper function to verify project data in HTML content
+func verifyHTMLProjectData(t *testing.T, content string) {
+	// Verify dependency data is included
+	assert.Contains(t, content, "github.com/gin-gonic/gin")
+	assert.Contains(t, content, "express")
+
+	// Verify repository links are included
+	assert.Contains(t, content, "href=\"https://gitlab.com/test/repo1\"")
+	assert.Contains(t, content, "href=\"https://gitlab.com/test/repo2\"")
+	assert.Contains(t, content, "target=\"_blank\"")
+	assert.Contains(t, content, "Open repository")
+
+	// Verify latest versions are included in headers
+	assert.Contains(t, content, "→ v1.9.2")
+	assert.Contains(t, content, "→ 4.19.0")
+	assert.Contains(t, content, "→ 18.3.0")
+}
+
+// Helper function to verify project data in JSON content
+func verifyJSONProjectData(t *testing.T, content string) {
 	// Verify project data is included
 	assert.Contains(t, content, "Test Project 1")
 	assert.Contains(t, content, "Test Project 2")
@@ -193,6 +218,15 @@ func verifyProjectData(t *testing.T, content string) {
 	// Verify dependency data is included
 	assert.Contains(t, content, "github.com/gin-gonic/gin")
 	assert.Contains(t, content, "express")
+
+	// Verify repository URLs are included in JSON
+	assert.Contains(t, content, "\"web_url\": \"https://gitlab.com/test/repo1\"")
+	assert.Contains(t, content, "\"web_url\": \"https://gitlab.com/test/repo2\"")
+
+	// Verify latest versions are included in JSON
+	assert.Contains(t, content, "\"latest_version\": \"v1.9.2\"")
+	assert.Contains(t, content, "\"latest_version\": \"4.19.0\"")
+	assert.Contains(t, content, "\"latest_version\": \"18.3.0\"")
 }
 
 func TestGenerateHTML(t *testing.T) {
@@ -216,11 +250,11 @@ func TestGenerateHTML(t *testing.T) {
 	assert.Contains(t, htmlContent, "<head>")
 	assert.Contains(t, htmlContent, "<body class=\"bg-gray-50 font-sans\">")
 
-	verifyProjectData(t, htmlContent)
+	verifyHTMLProjectData(t, htmlContent)
 
 	// Verify matrix table is included
 	assert.Contains(t, htmlContent, "Dependency Matrix")
-	assert.Contains(t, htmlContent, "tab-content")
+	assert.Contains(t, htmlContent, "dependency-matrix")
 }
 
 func TestGenerateCSV(t *testing.T) {
@@ -290,7 +324,7 @@ func TestGenerateJSON(t *testing.T) {
 	assert.Contains(t, jsonContent, "\"internal_external\"")
 	assert.Contains(t, jsonContent, "\"ecosystems\"")
 
-	verifyProjectData(t, jsonContent)
+	verifyJSONProjectData(t, jsonContent)
 }
 
 func TestGenerateHTML_EmptyProjects(t *testing.T) {
@@ -315,8 +349,6 @@ func TestGenerateHTML_EmptyProjects(t *testing.T) {
 
 	htmlContent := string(content)
 	assert.Contains(t, htmlContent, "Dependency Matrix")
-	assert.Contains(t, htmlContent, "Total Projects")
-	assert.Contains(t, htmlContent, "Total Dependencies")
 }
 
 func TestGenerateCSV_EmptyProjects(t *testing.T) {
@@ -565,26 +597,29 @@ func createTestProjects() []*domain.Project {
 			ID:   "test-project-1",
 			Name: "Test Project 1",
 			Repository: domain.Repository{
-				ID:   123,
-				Name: "test-repo-1",
-				URL:  "https://gitlab.com/test/repo1",
+				ID:     123,
+				Name:   "test-repo-1",
+				URL:    "https://gitlab.com/test/repo1",
+				WebURL: "https://gitlab.com/test/repo1",
 			},
 			Path:     "backend/",
 			Language: "go",
 			Dependencies: []*domain.Dependency{
 				{
-					Name:       "github.com/gin-gonic/gin",
-					Version:    "v1.9.1",
-					Constraint: "^1.9.0",
-					IsInternal: false,
-					Ecosystem:  "go-modules",
+					Name:          "github.com/gin-gonic/gin",
+					Version:       "v1.9.1",
+					LatestVersion: "v1.9.2",
+					Constraint:    "^1.9.0",
+					IsInternal:    false,
+					Ecosystem:     "go-modules",
 				},
 				{
-					Name:       "internal/company/auth",
-					Version:    "v1.0.0",
-					Constraint: "v1.0.0",
-					IsInternal: true,
-					Ecosystem:  "go-modules",
+					Name:          "internal/company/auth",
+					Version:       "v1.0.0",
+					LatestVersion: "v1.0.0",
+					Constraint:    "v1.0.0",
+					IsInternal:    true,
+					Ecosystem:     "go-modules",
 				},
 			},
 		},
@@ -592,26 +627,29 @@ func createTestProjects() []*domain.Project {
 			ID:   "test-project-2",
 			Name: "Test Project 2",
 			Repository: domain.Repository{
-				ID:   456,
-				Name: "test-repo-2",
-				URL:  "https://gitlab.com/test/repo2",
+				ID:     456,
+				Name:   "test-repo-2",
+				URL:    "https://gitlab.com/test/repo2",
+				WebURL: "https://gitlab.com/test/repo2",
 			},
 			Path:     "frontend/",
 			Language: "nodejs",
 			Dependencies: []*domain.Dependency{
 				{
-					Name:       "express",
-					Version:    "4.18.2",
-					Constraint: "^4.18.0",
-					IsInternal: false,
-					Ecosystem:  "npm",
+					Name:          "express",
+					Version:       "4.18.2",
+					LatestVersion: "4.19.0",
+					Constraint:    "^4.18.0",
+					IsInternal:    false,
+					Ecosystem:     "npm",
 				},
 				{
-					Name:       "react",
-					Version:    "18.2.0",
-					Constraint: "^18.0.0",
-					IsInternal: false,
-					Ecosystem:  "npm",
+					Name:          "react",
+					Version:       "18.2.0",
+					LatestVersion: "18.3.0",
+					Constraint:    "^18.0.0",
+					IsInternal:    false,
+					Ecosystem:     "npm",
 				},
 			},
 		},

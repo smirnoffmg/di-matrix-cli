@@ -28,11 +28,12 @@ type DependencyFile struct {
 }
 
 type Dependency struct {
-	Name       string `json:"name"`        // "github.com/gin-gonic/gin"
-	Version    string `json:"version"`     // "v1.9.1"
-	Constraint string `json:"constraint"`  // "^1.9.0"
-	MinVersion string `json:"min_version"` // "1.9.0"
-	MaxVersion string `json:"max_version"` // "2.0.0"
-	IsInternal bool   `json:"is_internal"` // true/false
-	Ecosystem  string `json:"ecosystem"`   // "go-modules", "npm", "maven"
+	Name          string `json:"name"`           // "github.com/gin-gonic/gin"
+	Version       string `json:"version"`        // "v1.9.1"
+	LatestVersion string `json:"latest_version"` // "v1.9.2" - latest available version
+	Constraint    string `json:"constraint"`     // "^1.9.0"
+	MinVersion    string `json:"min_version"`    // "1.9.0"
+	MaxVersion    string `json:"max_version"`    // "2.0.0"
+	IsInternal    bool   `json:"is_internal"`    // true/false
+	Ecosystem     string `json:"ecosystem"`      // "go-modules", "npm", "maven"
 }

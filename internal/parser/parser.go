@@ -62,13 +62,14 @@ func (p *Parser) ParseFile(ctx context.Context, file *domain.DependencyFile) ([]
 	for i := range trivyPackages {
 		pkg := &trivyPackages[i]
 		dependencies = append(dependencies, &domain.Dependency{
-			Name:       pkg.Name,
-			Version:    pkg.Version,
-			Constraint: p.extractConstraint(pkg),
-			MinVersion: p.extractMinVersion(pkg),
-			MaxVersion: p.extractMaxVersion(pkg),
-			IsInternal: p.isInternalDependency(pkg.Name),
-			Ecosystem:  p.getEcosystem(file.Language),
+			Name:          pkg.Name,
+			Version:       pkg.Version,
+			LatestVersion: pkg.Version, // TODO: Fetch actual latest version from package registry
+			Constraint:    p.extractConstraint(pkg),
+			MinVersion:    p.extractMinVersion(pkg),
+			MaxVersion:    p.extractMaxVersion(pkg),
+			IsInternal:    p.isInternalDependency(pkg.Name),
+			Ecosystem:     p.getEcosystem(file.Language),
 		})
 	}
 
