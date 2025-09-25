@@ -57,8 +57,8 @@ func NewAnalyzeUseCase(
 }
 
 // Execute runs the main dependency analysis workflow
-func (uc *AnalyzeUseCase) Execute(repositoryURLs []string) (*AnalyzeResponse, error) {
-	uc.logger.Info("Starting dependency analysis workflow")
+func (uc *AnalyzeUseCase) Execute(repositoryURLs []string, targetLanguage string) (*AnalyzeResponse, error) {
+	uc.logger.Info("Starting dependency analysis workflow", zap.String("target_language", targetLanguage))
 
 	// Step 1: Get repositories from URLs (with concurrency)
 	var repositories []*domain.Repository
@@ -130,7 +130,20 @@ func (uc *AnalyzeUseCase) Execute(repositoryURLs []string) (*AnalyzeResponse, er
 	uc.logger.Info("Detected projects across all repositories",
 		zap.Int("total_projects", len(allProjects)))
 
+	// Filter projects by target language
+	var filteredProjects []*domain.Project
 	for _, project := range allProjects {
+		if project.Language == targetLanguage {
+			filteredProjects = append(filteredProjects, project)
+		}
+	}
+
+	uc.logger.Info("Filtered projects by language",
+		zap.String("target_language", targetLanguage),
+		zap.Int("total_projects", len(allProjects)),
+		zap.Int("filtered_projects", len(filteredProjects)))
+
+	for _, project := range filteredProjects {
 		uc.logger.Info("Detected project",
 			zap.String("project_id", project.ID),
 			zap.String("project_name", project.Name),
@@ -140,15 +153,15 @@ func (uc *AnalyzeUseCase) Execute(repositoryURLs []string) (*AnalyzeResponse, er
 	}
 
 	// Step 3: Parse dependency files and classify dependencies (with concurrency)
-	totalDependencies, internalCount, externalCount, err := uc.processProjectsConcurrently(allProjects)
+	totalDependencies, internalCount, externalCount, err := uc.processProjectsConcurrently(filteredProjects)
 	if err != nil {
 		uc.logger.Error("Failed to process projects concurrently", zap.Error(err))
 		return nil, err
 	}
 
-	// Step 4: Generate HTML report with all results
-	uc.logger.Info("Generating HTML report", zap.Int("projects_count", len(allProjects)))
-	if err := uc.generator.GenerateHTML(uc.ctx, allProjects); err != nil {
+	// Step 4: Generate HTML report with filtered results
+	uc.logger.Info("Generating HTML report", zap.Int("projects_count", len(filteredProjects)))
+	if err := uc.generator.GenerateHTML(uc.ctx, filteredProjects); err != nil {
 		uc.logger.Error("Failed to generate HTML report", zap.Error(err))
 		return nil, err
 	}
@@ -158,7 +171,7 @@ func (uc *AnalyzeUseCase) Execute(repositoryURLs []string) (*AnalyzeResponse, er
 
 	// Calculate response metrics
 	response := &AnalyzeResponse{
-		TotalProjects:     len(allProjects),
+		TotalProjects:     len(filteredProjects),
 		TotalDependencies: totalDependencies,
 		InternalCount:     internalCount,
 		ExternalCount:     externalCount,

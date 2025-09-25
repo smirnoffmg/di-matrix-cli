@@ -310,7 +310,7 @@ concurrency:
 				zap.NewNop(),
 			)
 
-			_, err := analyzeUseCase.Execute([]string{"https://gitlab.com/test/repo1"})
+			_, err := analyzeUseCase.Execute([]string{"https://gitlab.com/test/repo1"}, "go")
 			if err != nil {
 				return fmt.Errorf("failed to analyze dependency matrix: %w", err)
 			}

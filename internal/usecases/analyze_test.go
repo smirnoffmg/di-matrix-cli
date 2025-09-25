@@ -216,12 +216,12 @@ func TestExecute_Success(t *testing.T) {
 	project1 := &domain.Project{
 		ID:       "repo1-project1",
 		Name:     "Project 1",
-		Language: "Go",
+		Language: "go",
 		Path:     "/project1",
 		DependencyFiles: []*domain.DependencyFile{
 			{
 				Path:     "go.mod",
-				Language: "Go",
+				Language: "go",
 				Content:  []byte("module test"),
 			},
 		},
@@ -230,12 +230,12 @@ func TestExecute_Success(t *testing.T) {
 	project2 := &domain.Project{
 		ID:       "repo2-project1",
 		Name:     "Project 2",
-		Language: "JavaScript",
+		Language: "nodejs",
 		Path:     "/project2",
 		DependencyFiles: []*domain.DependencyFile{
 			{
 				Path:     "package.json",
-				Language: "JavaScript",
+				Language: "nodejs",
 				Content:  []byte(`{"dependencies": {"express": "^4.0.0"}}`),
 			},
 		},
@@ -245,13 +245,6 @@ func TestExecute_Success(t *testing.T) {
 		Name:       "github.com/gin-gonic/gin",
 		Version:    "v1.9.0",
 		Ecosystem:  "go-modules",
-		IsInternal: false,
-	}
-
-	dependency2 := &domain.Dependency{
-		Name:       "express",
-		Version:    "^4.0.0",
-		Ecosystem:  "npm",
 		IsInternal: false,
 	}
 
@@ -265,15 +258,12 @@ func TestExecute_Success(t *testing.T) {
 	mockScanner.On("DetectProjects", mock.Anything, repo1).Return([]*domain.Project{project1}, nil)
 	mockScanner.On("DetectProjects", mock.Anything, repo2).Return([]*domain.Project{project2}, nil)
 
-	// Mock parser to return dependencies
+	// Mock parser to return dependencies (only for Go project since we're filtering by "go")
 	mockParser.On("ParseFile", mock.Anything, project1.DependencyFiles[0]).
 		Return([]*domain.Dependency{dependency1}, nil)
-	mockParser.On("ParseFile", mock.Anything, project2.DependencyFiles[0]).
-		Return([]*domain.Dependency{dependency2}, nil)
 
-	// Mock IsInternal calls (the actual method being called)
+	// Mock IsInternal calls (only for Go project)
 	mockClassifier.On("IsInternal", mock.Anything, dependency1).Return(false)
-	mockClassifier.On("IsInternal", mock.Anything, dependency2).Return(false)
 
 	// Mock generator to succeed
 	mockGenerator.On("GenerateHTML", mock.Anything, mock.AnythingOfType("[]*domain.Project")).Return(nil)
@@ -295,15 +285,15 @@ func TestExecute_Success(t *testing.T) {
 		"https://gitlab.com/test/repo2",
 	}
 
-	response, err := useCase.Execute(repositoryURLs)
+	response, err := useCase.Execute(repositoryURLs, "go")
 
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, response)
-	assert.Equal(t, 2, response.TotalProjects)
-	assert.Equal(t, 2, response.TotalDependencies)
+	assert.Equal(t, 1, response.TotalProjects) // Only Go project should be included
+	assert.Equal(t, 1, response.TotalDependencies)
 	assert.Equal(t, 0, response.InternalCount)
-	assert.Equal(t, 2, response.ExternalCount)
+	assert.Equal(t, 1, response.ExternalCount)
 
 	// Verify all mocks were called
 	mockGitlabClient.AssertExpectations(t)
@@ -344,7 +334,7 @@ func TestExecute_GitLabClientError(t *testing.T) {
 	// Execute the use case
 	repositoryURLs := []string{"https://gitlab.com/test/repo1"}
 
-	response, err := useCase.Execute(repositoryURLs)
+	response, err := useCase.Execute(repositoryURLs, "go")
 
 	// Verify error is returned
 	require.Error(t, err)
@@ -399,7 +389,7 @@ func TestExecute_ScannerError(t *testing.T) {
 	// Execute the use case
 	repositoryURLs := []string{"https://gitlab.com/test/repo1"}
 
-	response, err := useCase.Execute(repositoryURLs)
+	response, err := useCase.Execute(repositoryURLs, "go")
 
 	// Verify that scanner errors are logged but don't fail the entire process
 	// The use case should continue and return a response with 0 projects
@@ -437,12 +427,12 @@ func TestExecute_GeneratorError(t *testing.T) {
 	project1 := &domain.Project{
 		ID:       "repo1-project1",
 		Name:     "Project 1",
-		Language: "Go",
+		Language: "go",
 		Path:     "/project1",
 		DependencyFiles: []*domain.DependencyFile{
 			{
 				Path:     "go.mod",
-				Language: "Go",
+				Language: "go",
 				Content:  []byte("module test"),
 			},
 		},
@@ -486,7 +476,7 @@ func TestExecute_GeneratorError(t *testing.T) {
 	// Execute the use case
 	repositoryURLs := []string{"https://gitlab.com/test/repo1"}
 
-	response, err := useCase.Execute(repositoryURLs)
+	response, err := useCase.Execute(repositoryURLs, "go")
 
 	// Verify error is returned
 	require.Error(t, err)

@@ -14,10 +14,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestGitlabClient_CheckPermissions(t *testing.T) {
-	t.Parallel()
-
-	// Skip if no GitLab token is provided
+// validateGitLabToken checks if the GitLab token is valid and skips the test if not
+func validateGitLabToken(t *testing.T) (string, string) {
 	token := os.Getenv("GITLAB_TOKEN")
 	if token == "" {
 		t.Skip("GITLAB_TOKEN not set, skipping integration test")
@@ -27,6 +25,29 @@ func TestGitlabClient_CheckPermissions(t *testing.T) {
 	if baseURL == "" {
 		baseURL = "https://gitlab.com/"
 	}
+
+	// Quick validation: try to create a client and check permissions
+	client, err := gitlab.NewClient(baseURL, token, zap.NewNop())
+	require.NoError(t, err)
+
+	// Test token validity with a simple permission check
+	err = client.CheckPermissions(context.Background())
+	if err != nil {
+		// Check if it's a token-related error
+		if strings.Contains(err.Error(), "invalid_token") || strings.Contains(err.Error(), "401") {
+			t.Skipf("GitLab token is invalid or revoked: %v", err)
+		}
+		// Other errors (network, etc.) should not skip the test
+	}
+
+	return token, baseURL
+}
+
+func TestGitlabClient_CheckPermissions(t *testing.T) {
+	t.Parallel()
+
+	// Validate GitLab token and skip if invalid
+	token, baseURL := validateGitLabToken(t)
 
 	client, err := gitlab.NewClient(baseURL, token, zap.NewNop())
 	require.NoError(t, err)
@@ -50,16 +71,8 @@ func TestGitlabClient_CheckPermissions(t *testing.T) {
 func TestGitlabClient_GetRepositoriesList(t *testing.T) {
 	t.Parallel()
 
-	// Skip if no GitLab token is provided
-	token := os.Getenv("GITLAB_TOKEN")
-	if token == "" {
-		t.Skip("GITLAB_TOKEN not set, skipping integration test")
-	}
-
-	baseURL := os.Getenv("GITLAB_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://gitlab.com/"
-	}
+	// Validate GitLab token and skip if invalid
+	token, baseURL := validateGitLabToken(t)
 
 	client, err := gitlab.NewClient(baseURL, token, zap.NewNop())
 	require.NoError(t, err)
@@ -127,16 +140,8 @@ func TestGitlabClient_GetRepositoriesList(t *testing.T) {
 func TestGitlabClient_GetFilesList(t *testing.T) {
 	t.Parallel()
 
-	// Skip if no GitLab token is provided
-	token := os.Getenv("GITLAB_TOKEN")
-	if token == "" {
-		t.Skip("GITLAB_TOKEN not set, skipping integration test")
-	}
-
-	baseURL := os.Getenv("GITLAB_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://gitlab.com/"
-	}
+	// Validate GitLab token and skip if invalid
+	token, baseURL := validateGitLabToken(t)
 
 	client, err := gitlab.NewClient(baseURL, token, zap.NewNop())
 	require.NoError(t, err)
@@ -187,16 +192,8 @@ func TestGitlabClient_GetFilesList(t *testing.T) {
 func TestGitlabClient_GetFileContent(t *testing.T) {
 	t.Parallel()
 
-	// Skip if no GitLab token is provided
-	token := os.Getenv("GITLAB_TOKEN")
-	if token == "" {
-		t.Skip("GITLAB_TOKEN not set, skipping integration test")
-	}
-
-	baseURL := os.Getenv("GITLAB_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://gitlab.com/"
-	}
+	// Validate GitLab token and skip if invalid
+	token, baseURL := validateGitLabToken(t)
 
 	client, err := gitlab.NewClient(baseURL, token, zap.NewNop())
 	require.NoError(t, err)
@@ -250,16 +247,8 @@ func TestGitlabClient_GetFileContent(t *testing.T) {
 func TestGitlabClient_GetRepository(t *testing.T) {
 	t.Parallel()
 
-	// Skip if no GitLab token is provided
-	token := os.Getenv("GITLAB_TOKEN")
-	if token == "" {
-		t.Skip("GITLAB_TOKEN not set, skipping integration test")
-	}
-
-	baseURL := os.Getenv("GITLAB_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://gitlab.com/"
-	}
+	// Validate GitLab token and skip if invalid
+	token, baseURL := validateGitLabToken(t)
 
 	client, err := gitlab.NewClient(baseURL, token, zap.NewNop())
 	require.NoError(t, err)

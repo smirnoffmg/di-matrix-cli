@@ -25,6 +25,7 @@ var (
 	title      string
 	debug      bool
 	timeout    int
+	language   string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -64,6 +65,11 @@ func setupCommands() {
 	analyzeCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging with verbose output")
 	analyzeCmd.Flags().IntVarP(&timeout, "timeout", "", 0,
 		"Analysis timeout in minutes (overrides config, 0 = use config default)")
+	analyzeCmd.Flags().
+		StringVarP(&language, "language", "l", "python", "Programming language to analyze (go, nodejs, java, python)")
+	if err := analyzeCmd.MarkFlagRequired("language"); err != nil {
+		panic(fmt.Sprintf("failed to mark language flag as required: %v", err))
+	}
 
 	// Bind flags to viper
 	if err := viper.BindPFlag("output.html_file", analyzeCmd.Flags().Lookup("output")); err != nil {
@@ -87,6 +93,19 @@ func main() {
 
 func runAnalyze(cmd *cobra.Command, args []string) error {
 	fmt.Println("🔍 Starting dependency matrix analysis...")
+
+	// Validate language flag
+	validLanguages := map[string]bool{
+		"go":     true,
+		"nodejs": true,
+		"java":   true,
+		"python": true,
+	}
+	if !validLanguages[language] {
+		return fmt.Errorf("invalid language '%s'. Supported languages: go, nodejs, java, python", language)
+	}
+
+	fmt.Printf("🎯 Analyzing %s projects only\n", language)
 
 	// Handle debug flag manually since it's a boolean
 	if debug {
@@ -155,7 +174,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		repositoryURLs[i] = repo.URL
 	}
 
-	response, err := analyzeUseCase.Execute(repositoryURLs)
+	response, err := analyzeUseCase.Execute(repositoryURLs, language)
 	if err != nil {
 		return fmt.Errorf("failed to analyze dependency matrix: %w", err)
 	}
