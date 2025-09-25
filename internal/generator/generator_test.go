@@ -53,6 +53,126 @@ func TestGenerateSummary(t *testing.T) {
 	assert.Equal(t, 3, internalExternal["external"])
 }
 
+// createSameRepositoryTestProjects creates test projects from the same repository with different paths
+func createSameRepositoryTestProjects() []*domain.Project {
+	return []*domain.Project{
+		{
+			ID:   "test-project-1",
+			Name: "Test Project 1",
+			Repository: domain.Repository{
+				ID:     123,
+				Name:   "test-repo",
+				URL:    "https://gitlab.com/test/repo",
+				WebURL: "https://gitlab.com/test/repo",
+			},
+			Path:     "backend/",
+			Language: "go",
+			Dependencies: []*domain.Dependency{
+				{
+					Name:          "github.com/gin-gonic/gin",
+					Version:       "v1.9.1",
+					LatestVersion: "v1.9.2",
+					Constraint:    "^1.9.0",
+					IsInternal:    false,
+					Ecosystem:     "go-modules",
+				},
+			},
+		},
+		{
+			ID:   "test-project-2",
+			Name: "Test Project 2",
+			Repository: domain.Repository{
+				ID:     123,
+				Name:   "test-repo",
+				URL:    "https://gitlab.com/test/repo",
+				WebURL: "https://gitlab.com/test/repo",
+			},
+			Path:     "", // root path
+			Language: "go",
+			Dependencies: []*domain.Dependency{
+				{
+					Name:          "github.com/gin-gonic/gin",
+					Version:       "v1.9.1",
+					LatestVersion: "v1.9.2",
+					Constraint:    "^1.9.0",
+					IsInternal:    false,
+					Ecosystem:     "go-modules",
+				},
+			},
+		},
+		{
+			ID:   "test-project-3",
+			Name: "Test Project 3",
+			Repository: domain.Repository{
+				ID:     123,
+				Name:   "test-repo",
+				URL:    "https://gitlab.com/test/repo",
+				WebURL: "https://gitlab.com/test/repo",
+			},
+			Path:     "frontend/",
+			Language: "go",
+			Dependencies: []*domain.Dependency{
+				{
+					Name:          "github.com/gin-gonic/gin",
+					Version:       "v1.9.1",
+					LatestVersion: "v1.9.2",
+					Constraint:    "^1.9.0",
+					IsInternal:    false,
+					Ecosystem:     "go-modules",
+				},
+			},
+		},
+	}
+}
+
+func TestGenerateMatrix_SameRepositoryDifferentPaths(t *testing.T) {
+	t.Parallel()
+	gen := generator.NewGenerator("test-output.html")
+	ctx := context.Background()
+
+	projects := createSameRepositoryTestProjects()
+
+	matrix := gen.GenerateMatrix(ctx, projects)
+
+	// Test that projects are sorted by path within the same repository
+	matrixProjects := matrix["projects"].([]*domain.Project)
+	assert.Len(t, matrixProjects, 3)
+
+	// Should be sorted: root (""), backend/, frontend/
+	assert.Empty(t, matrixProjects[0].Path, "First project should be root path")
+	assert.Equal(t, "backend/", matrixProjects[1].Path, "Second project should be backend/")
+	assert.Equal(t, "frontend/", matrixProjects[2].Path, "Third project should be frontend/")
+
+	// All should have the same repository name
+	assert.Equal(t, "test-repo", matrixProjects[0].Repository.Name)
+	assert.Equal(t, "test-repo", matrixProjects[1].Repository.Name)
+	assert.Equal(t, "test-repo", matrixProjects[2].Repository.Name)
+}
+
+func TestGenerateHTML_SameRepositoryDifferentPaths(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "test-report.html")
+
+	gen := generator.NewGenerator(outputPath)
+	ctx := context.Background()
+
+	projects := createSameRepositoryTestProjects()
+
+	err := gen.GenerateHTML(ctx, projects)
+	require.NoError(t, err)
+
+	htmlContent := verifyFileCreated(t, outputPath)
+
+	// Verify that paths are displayed correctly
+	assert.Contains(t, htmlContent, "root")
+	assert.Contains(t, htmlContent, "backend/")
+	assert.Contains(t, htmlContent, "frontend/")
+
+	// Verify repository name is still displayed as link
+	assert.Contains(t, htmlContent, "test-repo")
+}
+
 func TestGenerateMatrix(t *testing.T) {
 	t.Parallel()
 	gen := generator.NewGenerator("/tmp/test.html")
@@ -99,6 +219,14 @@ func TestGenerateMatrix(t *testing.T) {
 	// Test projects list
 	matrixProjects := matrix["projects"].([]*domain.Project)
 	assert.Len(t, matrixProjects, 2)
+
+	// Test that projects are sorted by repository name alphabetically
+	assert.Equal(t, "test-repo-1", matrixProjects[0].Repository.Name, "First project should be test-repo-1")
+	assert.Equal(t, "test-repo-2", matrixProjects[1].Repository.Name, "Second project should be test-repo-2")
+
+	// Test that projects are sorted by repository name first, then by path
+	assert.Equal(t, "backend/", matrixProjects[0].Path, "First project should have backend/ path")
+	assert.Equal(t, "frontend/", matrixProjects[1].Path, "Second project should have frontend/ path")
 
 	// Test matrix data
 	matrixData := matrix["matrix"].([][]interface{})
@@ -197,11 +325,19 @@ func verifyHTMLProjectData(t *testing.T, content string) {
 	assert.Contains(t, content, "github.com/gin-gonic/gin")
 	assert.Contains(t, content, "express")
 
+	// Verify project paths are included
+	assert.Contains(t, content, "backend/")
+	assert.Contains(t, content, "frontend/")
+
 	// Verify repository links are included
 	assert.Contains(t, content, "href=\"https://gitlab.com/test/repo1\"")
 	assert.Contains(t, content, "href=\"https://gitlab.com/test/repo2\"")
 	assert.Contains(t, content, "target=\"_blank\"")
 	assert.Contains(t, content, "Open repository")
+
+	// Verify repository names are included (as links)
+	assert.Contains(t, content, "test-repo-1")
+	assert.Contains(t, content, "test-repo-2")
 
 	// Verify latest versions are included in headers
 	assert.Contains(t, content, "→ v1.9.2")

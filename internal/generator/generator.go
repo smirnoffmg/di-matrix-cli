@@ -195,17 +195,37 @@ func (g *Generator) createCombinedMatrix(projects []*domain.Project) ([]map[stri
 	return dependencyObjects, combinedMatrix
 }
 
+// sortProjectsByRepositoryName sorts projects by repository name first, then by project path
+func (g *Generator) sortProjectsByRepositoryName(projects []*domain.Project) []*domain.Project {
+	sortedProjects := make([]*domain.Project, len(projects))
+	copy(sortedProjects, projects)
+
+	sort.Slice(sortedProjects, func(i, j int) bool {
+		// First sort by repository name
+		if sortedProjects[i].Repository.Name != sortedProjects[j].Repository.Name {
+			return sortedProjects[i].Repository.Name < sortedProjects[j].Repository.Name
+		}
+		// If same repository, sort by project path (root first, then subdirectories)
+		return sortedProjects[i].Path < sortedProjects[j].Path
+	})
+
+	return sortedProjects
+}
+
 // GenerateMatrix creates a simple dependency matrix for all projects
 func (g *Generator) GenerateMatrix(ctx context.Context, projects []*domain.Project) map[string]interface{} {
 	// Filter out projects with zero dependencies
 	filteredProjects := g.filterProjectsWithDependencies(projects)
 
+	// Sort projects by repository name
+	sortedProjects := g.sortProjectsByRepositoryName(filteredProjects)
+
 	// Create combined matrix
-	allDependencies, combinedMatrix := g.createCombinedMatrix(filteredProjects)
+	allDependencies, combinedMatrix := g.createCombinedMatrix(sortedProjects)
 
 	return map[string]interface{}{
 		"dependencies": allDependencies,
-		"projects":     filteredProjects,
+		"projects":     sortedProjects,
 		"matrix":       combinedMatrix,
 	}
 }

@@ -22,4 +22,4 @@ integration-test:
 	go test -tags=integration ./... --timeout=30s
 
 run:
-	go run cmd/main.go analyze --config config.yaml --language python
+	go run cmd/main.go analyze --config config.yaml --language nodejs
