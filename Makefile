@@ -1,13 +1,16 @@
-include .env
+-include .env
 export
 
 all: tidy fmt lint coverage integration-test
+
+build: tidy fmt lint
+	go build -a -ldflags="-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildTime=$(BUILD_TIME)" -installsuffix cgo -o di-matrix-cli ./cmd
 
 tidy:
 	go mod tidy
 
 fmt:
-	golangci-lint fmt
+	go fmt ./...
 
 lint: fmt
 	golangci-lint run

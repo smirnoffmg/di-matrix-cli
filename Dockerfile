@@ -3,9 +3,12 @@
 # Build stage: Compile Go application
 FROM golang:1.25-alpine AS builder
 
-# Set build arguments for cross-compilation
+# Set build arguments for cross-compilation and version info
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
 
 # Set environment variables for Go build
 ENV CGO_ENABLED=0 \
@@ -13,8 +16,8 @@ ENV CGO_ENABLED=0 \
     GOARCH=${TARGETARCH} \
     GO111MODULE=on
 
-# Install git and ca-certificates for dependency fetching
-RUN apk add --no-cache git ca-certificates tzdata
+# Install git, ca-certificates, curl, and make for dependency fetching, linting, and building
+RUN apk add --no-cache git ca-certificates tzdata curl make
 
 # Set working directory
 WORKDIR /app
@@ -28,18 +31,22 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN go build -a -ldflags="-s -w" -installsuffix cgo -o di-matrix-cli ./cmd
+# Install golangci-lint for linting (latest version compatible with Go 1.25)
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
 
-# Test stage: Run tests
+# Install gotestsum for better test output
+RUN go install gotest.tools/gotestsum@latest
+
+# Build the application using Makefile to ensure quality gates
+RUN make build VERSION=${VERSION} COMMIT=${COMMIT} BUILD_TIME=${BUILD_TIME}
+
+# Test stage: Run tests using Makefile
 FROM builder AS test-stage
-RUN go test -v ./...
+RUN make coverage
 
-# Lint stage: Run golangci-lint
+# Lint stage: Run golangci-lint using Makefile
 FROM builder AS lint-stage
-RUN apk add --no-cache curl
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0
-RUN golangci-lint run
+RUN make lint
 
 # Final stage: Create minimal runtime image
 FROM alpine:3.21 AS final
@@ -50,7 +57,6 @@ RUN apk --no-cache add ca-certificates tzdata
 # Environment variables for runtime configuration
 # These can be overridden at runtime
 ENV GITLAB_BASE_URL="https://gitlab.com"
-ENV GITLAB_TOKEN=""
 ENV OUTPUT_HTML_FILE="dependency-matrix.html"
 ENV OUTPUT_TITLE="Dependency Matrix Report"
 ENV ANALYSIS_TIMEOUT_MINUTES="10"
@@ -80,5 +86,6 @@ USER appuser
 # Set the binary as executable
 RUN chmod +x /app/di-matrix-cli
 
-# Default command with config file
-ENTRYPOINT ["/app/di-matrix-cli", "analyze", "--config", "/app/config/config.yaml"]
+# Default command - can be overridden
+ENTRYPOINT ["/app/di-matrix-cli"]
+CMD ["analyze", "--config", "/app/config/config.yaml"]

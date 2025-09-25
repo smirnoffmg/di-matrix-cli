@@ -19,6 +19,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// Version information - set by build-time ldflags
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildTime = "unknown"
+)
+
 var (
 	configFile string
 	outputFile string
@@ -39,6 +46,18 @@ monorepos with mixed project types, and generates an interactive HTML report thr
 scalable worker pools.`,
 }
 
+// versionCmd represents the version command
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Show version information",
+	Long:  "Display version, commit hash, and build time information.",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("di-matrix-cli %s\n", version)
+		fmt.Printf("Commit: %s\n", commit)
+		fmt.Printf("Built: %s\n", buildTime)
+	},
+}
+
 // analyzeCmd represents the analyze command
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze",
@@ -51,12 +70,30 @@ event-driven worker pools.`,
 }
 
 func setupCommands() {
+	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(analyzeCmd)
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "Path to configuration file (required)")
-	if err := rootCmd.MarkPersistentFlagRequired("config"); err != nil {
-		panic(fmt.Sprintf("failed to mark config flag as required: %v", err))
+	rootCmd.PersistentFlags().BoolP("version", "v", false, "Show version information")
+
+	// Handle --version flag on root command
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
+			fmt.Printf("di-matrix-cli %s\n", version)
+			fmt.Printf("Commit: %s\n", commit)
+			fmt.Printf("Built: %s\n", buildTime)
+			os.Exit(0)
+		}
+		return nil
+	}
+
+	// Add pre-run validation for analyze command to check required config flag
+	analyzeCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if configFile == "" {
+			return fmt.Errorf("config flag is required for analyze command")
+		}
+		return nil
 	}
 
 	// Analyze command flags
